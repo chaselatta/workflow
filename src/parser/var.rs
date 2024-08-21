@@ -13,7 +13,8 @@ pub enum VarScope<'a> {
 #[derive(Debug, PartialEq)]
 pub struct Var<'a> {
     pub name: &'a str,
-    // pub default: &'a str,
+    pub default: Option<&'a str>,
+    pub env: Option< &'a str>,
     pub cli_flag: Option<&'a str>,
     // pub readers: VarScope<'a>,
     // pub writers: VarScope<'a>,
@@ -28,6 +29,8 @@ impl<'a> Var<'a> {
 #[derive(Debug)]
 struct VarBuilder<'a> {
     name: FieldState<&'a str>,
+    default: FieldState<Option<&'a str>>,
+    env: FieldState<Option<&'a str>>,
     cli_flag: FieldState<Option<&'a str>>,
 }
 
@@ -37,6 +40,8 @@ impl<'a> Buildable for VarBuilder<'a> {
     fn build(&self) -> Result<Self::B, String> {
         Ok(Var {
             name: self.name.validate("Var::name")?,
+            default: *self.default.validate("Var::default")?,
+            env: *self.env.validate("Var::env")?,
             cli_flag: *self.cli_flag.validate("Var::cli_flag")?,
         })
     }
@@ -46,9 +51,12 @@ impl<'a> VarBuilder<'a> {
     fn new() -> VarBuilder<'a> {
         VarBuilder {
             name: FieldState::NeedsValue,
+            default: FieldState::Default(None),
+            env: FieldState::Default(None),
             cli_flag: FieldState::Default(None),
         }
     }
+
     fn set_name(&mut self, name: &'a str) {
         if name.is_empty() {
             self.name = FieldState::Error("name cannot be an empty string.".to_string())
@@ -62,6 +70,17 @@ impl<'a> VarBuilder<'a> {
         } else {
             self.cli_flag = FieldState::Error("Flags must start with --".to_string())
         }
+    }
+
+    fn set_default(&mut self, val: &'a str) {
+        self.default = self.default.update(Some(val));
+    }
+
+    fn set_env(&mut self, val: &'a str) {
+        if val.is_empty() {
+            self.env = FieldState::Error("env cannot be an empty string.".to_string())
+        }
+        self.env = self.env.update(Some(val));
     }
 }
 
@@ -79,6 +98,12 @@ fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
             }
             Rule::var_cli_flag => {
                 builder.set_cli_flag(parse_string_entry(pair.into_inner().next().unwrap())?);
+            }
+            Rule::var_default => {
+                builder.set_default(parse_string_entry(pair.into_inner().next().unwrap())?);
+            }
+            Rule::var_env => {
+                builder.set_env(parse_string_entry(pair.into_inner().next().unwrap())?);
             }
             _ => unreachable!()
         };
@@ -128,6 +153,30 @@ mod tests {
         let mut builder = Var::builder();
         builder.set_cli_flag("--bar");
         assert_eq!(builder.cli_flag, FieldState::Value(Some("--bar")),);
+    }
+
+    #[test]
+    fn test_set_default() {
+        let mut builder = Var::builder();
+        builder.set_default("foo");
+        assert_eq!(builder.default, FieldState::Value(Some("foo")),);
+    }
+
+    #[test]
+    fn test_empty_env_fails() {
+        let mut builder = Var::builder();
+        builder.set_env("");
+        assert!(match builder.env {
+            FieldState::Error(_) => true,
+            _ => false,
+        });
+    }
+
+    #[test]
+    fn test_set_env() {
+        let mut builder = Var::builder();
+        builder.set_env("FOO");
+        assert_eq!(builder.env, FieldState::Value(Some("FOO")),);
     }
 
     #[test]
@@ -198,6 +247,21 @@ r#"var(
                 {
                     let mut builder = Var::builder();
                     builder.set_name("my_var");
+                    builder.set_cli_flag("--foo");
+                    builder.build().unwrap()
+                },
+            ),
+            (
+                r#"var(
+                name: "my_var",
+                default: "v",
+                env: "FOO",
+                cli_flag: "--foo")"#,
+                {
+                    let mut builder = Var::builder();
+                    builder.set_name("my_var");
+                    builder.set_default("v");
+                    builder.set_env("FOO");
                     builder.set_cli_flag("--foo");
                     builder.build().unwrap()
                 },

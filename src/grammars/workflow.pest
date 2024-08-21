@@ -22,10 +22,14 @@ number = @{
 // Variables
 var_name = { "name:" ~ string }
 var_cli_flag = { "cli_flag:" ~ string }
+var_default = { "default:" ~ string }
+var_env = { "env:" ~ string }
 
 var_entry = _{ (
   var_name | 
-  var_cli_flag
+  var_cli_flag |
+  var_default |
+  var_env
 )* }
 
 var = { 
@@ -40,5 +44,6 @@ var(
   readers = ["foo", "bar"] // if empty it is global
   writers = ["foo", "bar"] // if empty global
   cli_flag = "--some-name", // can be set from the command line
+  env = "ENV_VAR", // take a value from the environment
 )
 */
