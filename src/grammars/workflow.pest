@@ -1,0 +1,44 @@
+// Allow the following whitespace
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// String Support
+string = ${ "\"" ~ inner ~ "\"" }
+inner = @{ char* }
+char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+// Number Support
+number = @{
+  "-"?
+  ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+  ~ ("." ~ ASCII_DIGIT*)?
+  ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+
+// Variables
+var_name = { "name:" ~ string }
+var_cli_flag = { "cli_flag:" ~ string }
+
+var_entry = _{ (
+  var_name | 
+  var_cli_flag
+)* }
+
+var = { 
+  "var(" ~ ")" | 
+  "var(" ~ var_entry ~ ("," ~ var_entry)* ~ ")"
+}
+
+/*&
+var(
+  name = "some_name",
+  default = "some default",
+  readers = ["foo", "bar"] // if empty it is global
+  writers = ["foo", "bar"] // if empty global
+  cli_flag = "--some-name", // can be set from the command line
+)
+*/
