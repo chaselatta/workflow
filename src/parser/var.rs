@@ -14,7 +14,7 @@ pub enum VarScope<'a> {
 pub struct Var<'a> {
     pub name: &'a str,
     pub default: Option<&'a str>,
-    pub env: Option< &'a str>,
+    pub env: Option<&'a str>,
     pub cli_flag: Option<&'a str>,
     // pub readers: VarScope<'a>,
     // pub writers: VarScope<'a>,
@@ -87,7 +87,7 @@ impl<'a> VarBuilder<'a> {
 fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
     match var.as_rule() {
         Rule::var => (),
-        _ => panic!("Attempting to parse a non-var")
+        _ => panic!("Attempting to parse a non-var"),
     };
 
     let mut builder = Var::builder();
@@ -105,7 +105,7 @@ fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
             Rule::var_env => {
                 builder.set_env(parse_string_entry(pair.into_inner().next().unwrap())?);
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         };
     }
     builder.build()
@@ -182,7 +182,10 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_fail_invalid_type_in_parse_var() {
-        let pair = WorkflowParser::parse(Rule::string, "").unwrap().next().unwrap();
+        let pair = WorkflowParser::parse(Rule::string, "")
+            .unwrap()
+            .next()
+            .unwrap();
         parse_var(pair).unwrap();
     }
 
