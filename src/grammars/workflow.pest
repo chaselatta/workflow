@@ -18,18 +18,27 @@ number = @{
   ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
 }
 
+// Lists
+string_list = {
+  "[" ~ "]" |
+  "[" ~ string ~ ("," ~ string*)* ~ "]"
+}
 
 // Variables
 var_name = { "name:" ~ string }
 var_cli_flag = { "cli_flag:" ~ string }
 var_default = { "default:" ~ string }
 var_env = { "env:" ~ string }
+var_readers = { "readers:" ~ string_list }
+var_writers = { "writers:" ~ string_list }
 
 var_entry = _{ (
   var_name | 
   var_cli_flag |
   var_default |
-  var_env
+  var_env |
+  var_readers |
+  var_writers
 )* }
 
 var = { 

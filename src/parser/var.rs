@@ -1,9 +1,9 @@
 use crate::parser::type_builder::{Buildable, FieldState};
-use crate::parser::{parse_string_entry, Rule, WorkflowParser};
+use crate::parser::{parse_string_entry, parse_string_list_entry, Rule, WorkflowParser};
 use pest::iterators::Pair;
 use pest::Parser;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum VarScope<'a> {
     Global,
     Restricted(Vec<&'a str>),
@@ -16,8 +16,8 @@ pub struct Var<'a> {
     pub default: Option<&'a str>,
     pub env: Option<&'a str>,
     pub cli_flag: Option<&'a str>,
-    // pub readers: VarScope<'a>,
-    // pub writers: VarScope<'a>,
+    pub readers: VarScope<'a>,
+    pub writers: VarScope<'a>,
 }
 
 impl<'a> Var<'a> {
@@ -32,6 +32,8 @@ struct VarBuilder<'a> {
     default: FieldState<Option<&'a str>>,
     env: FieldState<Option<&'a str>>,
     cli_flag: FieldState<Option<&'a str>>,
+    readers: FieldState<VarScope<'a>>,
+    writers: FieldState<VarScope<'a>>,
 }
 
 impl<'a> Buildable for VarBuilder<'a> {
@@ -43,6 +45,8 @@ impl<'a> Buildable for VarBuilder<'a> {
             default: *self.default.validate("Var::default")?,
             env: *self.env.validate("Var::env")?,
             cli_flag: *self.cli_flag.validate("Var::cli_flag")?,
+            readers: self.readers.validate("Var::readers")?.clone(),
+            writers: self.writers.validate("Var::writers")?.clone(),
         })
     }
 }
@@ -54,6 +58,8 @@ impl<'a> VarBuilder<'a> {
             default: FieldState::Default(None),
             env: FieldState::Default(None),
             cli_flag: FieldState::Default(None),
+            readers: FieldState::Default(VarScope::Global),
+            writers: FieldState::Default(VarScope::Global),
         }
     }
 
@@ -82,6 +88,14 @@ impl<'a> VarBuilder<'a> {
         }
         self.env = self.env.update(Some(val));
     }
+
+    fn set_readers(&mut self, readers: Vec<&'a str>) {
+        self.readers = self.readers.update(VarScope::Restricted(readers));
+    }
+
+    fn set_writers(&mut self, writers: Vec<&'a str>) {
+        self.writers = self.writers.update(VarScope::Restricted(writers));
+    }
 }
 
 fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
@@ -104,6 +118,12 @@ fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
             }
             Rule::var_env => {
                 builder.set_env(parse_string_entry(pair.into_inner().next().unwrap())?);
+            }
+            Rule::var_readers => {
+                builder.set_readers(parse_string_list_entry(pair.into_inner().next().unwrap())?);
+            }
+            Rule::var_writers => {
+                builder.set_writers(parse_string_list_entry(pair.into_inner().next().unwrap())?);
             }
             _ => unreachable!(),
         };
@@ -190,6 +210,46 @@ mod tests {
     }
 
     #[test]
+    fn test_set_readers() {
+        let mut builder = Var::builder();
+        builder.set_readers(vec!["a"]);
+        assert_eq!(
+            builder.readers,
+            FieldState::Value(VarScope::Restricted(vec!["a"]))
+        );
+    }
+
+    #[test]
+    fn test_readers_defaults_global() {
+        let var = {
+            let mut builder = Var::builder();
+            builder.set_name("my_var");
+            builder.build().unwrap()
+        };
+        assert_eq!(var.readers, VarScope::Global);
+    }
+
+    #[test]
+    fn test_set_writers() {
+        let mut builder = Var::builder();
+        builder.set_writers(vec!["a"]);
+        assert_eq!(
+            builder.writers,
+            FieldState::Value(VarScope::Restricted(vec!["a"]))
+        );
+    }
+
+    #[test]
+    fn test_writers_defaults_global() {
+        let var = {
+            let mut builder = Var::builder();
+            builder.set_name("my_var");
+            builder.build().unwrap()
+        };
+        assert_eq!(var.writers, VarScope::Global);
+    }
+
+    #[test]
     fn parse_var_test() {
         parses_to! {
             parser: WorkflowParser,
@@ -259,13 +319,17 @@ r#"var(
                 name: "my_var",
                 default: "v",
                 env: "FOO",
-                cli_flag: "--foo")"#,
+                cli_flag: "--foo",
+                readers: ["a", "b"],
+                writers: ["x", "y"])"#,
                 {
                     let mut builder = Var::builder();
                     builder.set_name("my_var");
                     builder.set_default("v");
                     builder.set_env("FOO");
                     builder.set_cli_flag("--foo");
+                    builder.set_readers(vec!["a", "b"]);
+                    builder.set_writers(vec!["x", "y"]);
                     builder.build().unwrap()
                 },
             ),
