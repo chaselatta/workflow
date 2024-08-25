@@ -56,3 +56,12 @@ var(
   env = "ENV_VAR", // take a value from the environment
 )
 */
+
+// Workflow
+workflow_content = {
+  (var)*
+}
+
+workflow_file = _{
+  SOI ~ workflow_content ~ EOI
+}
