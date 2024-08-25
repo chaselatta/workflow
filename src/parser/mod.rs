@@ -1,10 +1,7 @@
 pub mod type_builder;
 pub mod var;
 
-use {
-    pest::{iterators::Pair, Parser},
-    pest_derive::Parser,
-};
+use {pest::iterators::Pair, pest_derive::Parser};
 
 #[derive(Parser)]
 #[grammar = "grammars/workflow.pest"]
@@ -27,7 +24,7 @@ fn parse_string_list_entry(pairs: Pair<Rule>) -> Result<Vec<&str>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pest::{consumes_to, parses_to};
+    use pest::{consumes_to, parses_to, Parser};
 
     #[test]
     fn parse_builtin_strings() {

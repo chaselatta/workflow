@@ -1,7 +1,6 @@
 use crate::parser::type_builder::{Buildable, FieldState};
-use crate::parser::{parse_string_entry, parse_string_list_entry, Rule, WorkflowParser};
+use crate::parser::{parse_string_entry, parse_string_list_entry, Rule};
 use pest::iterators::Pair;
-use pest::Parser;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum VarScope<'a> {
@@ -98,7 +97,7 @@ impl<'a> VarBuilder<'a> {
     }
 }
 
-fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
+pub fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
     match var.as_rule() {
         Rule::var => (),
         _ => panic!("Attempting to parse a non-var"),
@@ -134,7 +133,8 @@ fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pest::{consumes_to, parses_to};
+    use crate::parser::WorkflowParser;
+    use pest::{consumes_to, parses_to, Parser};
 
     #[test]
     fn test_set_name() {
