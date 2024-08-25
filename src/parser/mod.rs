@@ -1,7 +1,9 @@
 pub mod type_builder;
 pub mod var;
+pub mod workflow_content;
 
-use {pest::iterators::Pair, pest_derive::Parser};
+use pest::iterators::Pair;
+use pest_derive::Parser;
 
 #[derive(Parser)]
 #[grammar = "grammars/workflow.pest"]

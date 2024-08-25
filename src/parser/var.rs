@@ -97,7 +97,7 @@ impl<'a> VarBuilder<'a> {
     }
 }
 
-pub fn parse_var(var: Pair<Rule>) -> Result<Var, String> {
+pub fn parse_var_entry(var: Pair<Rule>) -> Result<Var, String> {
     match var.as_rule() {
         Rule::var => (),
         _ => panic!("Attempting to parse a non-var"),
@@ -206,7 +206,7 @@ mod tests {
             .unwrap()
             .next()
             .unwrap();
-        parse_var(pair).unwrap();
+        parse_var_entry(pair).unwrap();
     }
 
     #[test]
@@ -338,8 +338,7 @@ r#"var(
         for input in inputs {
             let (string, expected) = input;
             let pair = WorkflowParser::parse(Rule::var, string);
-            let result = parse_var(pair.unwrap().next().unwrap());
-            println!("{:?}", result);
+            let result = parse_var_entry(pair.unwrap().next().unwrap());
             assert_eq!(expected, result.unwrap());
         }
     }
