@@ -16,8 +16,6 @@ pub enum VariableError {
         value: String,
         reason: String,
     },
-    #[error("Missing ParseContext from evaluator")]
-    MissingParseContext,
 }
 
 impl VariableError {
@@ -41,12 +39,9 @@ pub fn starlark_variable(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] writers: Option<ListOf<String>>,
         eval: &mut Evaluator,
     ) -> anyhow::Result<NoneType> {
-        if let Some(ctx) = ParseContext::from_evaluator(eval) {
-            let var = Variable::from_starlark(name, default, env, cli_flag, readers, writers)?;
-            ctx.add_variable(var);
-        } else {
-            bail!(VariableError::MissingParseContext);
-        }
+        let ctx = ParseContext::from_evaluator(eval)?;
+        let var = Variable::from_starlark(name, default, env, cli_flag, readers, writers)?;
+        ctx.add_variable(var)?;
         Ok(NoneType)
     }
 }
@@ -63,6 +58,7 @@ pub enum VariableScope {
     /// Scope is restried to the given names.
     Restricted(Vec<String>),
 }
+//TODO: Add current value
 
 /// A type representing a variable in a workflow.
 #[derive(Debug, PartialEq, Default)]
@@ -177,6 +173,17 @@ fn validate_scope(scopes: Option<Vec<String>>) -> anyhow::Result<VariableScope> 
 }
 
 impl Variable {
+    pub fn new(name: &str) -> Self {
+        Variable {
+            name: name.to_string(),
+            ..Variable::default()
+        }
+    }
+
+    pub fn name(&self) -> String {
+        self.name.to_owned().clone()
+    }
+
     fn from_starlark(
         name: &str,
         default: Option<&str>,
@@ -367,7 +374,7 @@ variable(
             AstModule::parse("test.star", starlark_code.to_owned(), &Dialect::Standard).unwrap();
         let _res = eval.eval_module(ast, &globals).unwrap();
 
-        assert_eq!(ctx.variables().len(), 2);
+        assert_eq!(ctx.variable_count(), 2);
     }
 
     #[test]
@@ -391,16 +398,19 @@ variable(
             AstModule::parse("test.star", starlark_code.to_owned(), &Dialect::Standard).unwrap();
         let _res = eval.eval_module(ast, &globals).unwrap();
 
-        assert_eq!(
-            ctx.variables()[0],
-            Variable {
-                name: "foo".to_string(),
-                default: Some("default".to_string()),
-                env: Some("FOO".to_string()),
-                cli_flag: Some("--foo".to_string()),
-                readers: VariableScope::from_str_list(vec!["a", "b"]),
-                writers: VariableScope::from_str_list(vec!["c", "d"]),
-            }
-        );
+        let _ = ctx.with_variable("foo", |v| {
+            assert_eq!(
+                v.unwrap(),
+                &Variable {
+                    name: "foo".to_string(),
+                    default: Some("default".to_string()),
+                    env: Some("FOO".to_string()),
+                    cli_flag: Some("--foo".to_string()),
+                    readers: VariableScope::from_str_list(vec!["a", "b"]),
+                    writers: VariableScope::from_str_list(vec!["c", "d"]),
+                }
+            );
+            Ok(())
+        });
     }
 }
