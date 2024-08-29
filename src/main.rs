@@ -1,5 +1,5 @@
 pub mod cmd;
-pub mod parser;
+pub mod stdlib;
 
 use crate::cmd::Cli;
 use clap::Parser;

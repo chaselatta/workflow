@@ -1,4 +1,4 @@
-var(
+variable(
   name: "some_name",
   default: "some default",
   readers: ["foo", "bar"],
@@ -7,6 +7,6 @@ var(
   env: "ENV_VAR",
 )
 
-var(
+variable(
   name: "foo",
 )
