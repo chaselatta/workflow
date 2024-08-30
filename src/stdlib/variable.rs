@@ -16,8 +16,13 @@ pub enum VariableError {
         value: String,
         reason: String,
     },
-    #[error("'{reader}' not in allowed scopes for var '{name}'")]
+
+    #[error("'{reader}' not in allowed scopes to read var '{name}'")]
     ReadNotAllowed { reader: String, name: String },
+
+    #[error("'{writer}' not in allowed scopes to write var '{name}'")]
+    WriteNotAllowed { writer: String, name: String },
+
     #[error("No value set for '{0}'")]
     NoDefaultValueSet(String),
 }
@@ -213,6 +218,22 @@ impl Variable {
             reader: reader.to_string(),
             name: self.name().to_owned(),
         });
+    }
+
+    fn write_value_unchecked<T: Into<String>>(&mut self, value: T) {
+        self.value = Some(value.into());
+    }
+
+    pub fn write_value<T: Into<String>>(&mut self, value: T, writer: &str) -> anyhow::Result<()> {
+        if access_allowed(&self.writers, writer) {
+            self.write_value_unchecked(value);
+            Ok(())
+        } else {
+            bail!(VariableError::WriteNotAllowed {
+                writer: writer.to_string(),
+                name: self.name().to_owned(),
+            })
+        }
     }
 
     fn from_starlark(
@@ -417,7 +438,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "'bar' not in allowed scopes for var ''")]
+    fn read_value_succes_if_in_scope() {
+        let var = Variable {
+            default: Some("default".to_string()),
+            readers: VariableScope::from_str_list(&["foo"]),
+            ..Variable::default()
+        };
+        assert_eq!(var.read_value("foo").unwrap(), "default".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "'bar' not in allowed scopes to read var ''")]
     fn read_value_fails_if_not_in_scope() {
         let var = Variable {
             readers: VariableScope::from_str_list(&["foo"]),
@@ -425,6 +456,48 @@ mod tests {
             ..Variable::default()
         };
         var.read_value("bar").unwrap();
+    }
+
+    #[test]
+    fn write_value_success() {
+        let mut var = Variable {
+            default: Some("default".to_string()),
+            ..Variable::default()
+        };
+        var.write_value_unchecked("new");
+        assert_eq!(var.read_value_unchecked().unwrap(), "new".to_string());
+    }
+
+    #[test]
+    fn write_value_success_no_default() {
+        let mut var = Variable {
+            ..Variable::default()
+        };
+        var.write_value_unchecked("new");
+        assert_eq!(var.read_value_unchecked().unwrap(), "new".to_string());
+
+        var.write_value_unchecked("next".to_string());
+        assert_eq!(var.read_value_unchecked().unwrap(), "next".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "'bar' not in allowed scopes to write var ''")]
+    fn write_value_fails_if_not_in_scope() {
+        let mut var = Variable {
+            writers: VariableScope::from_str_list(&["foo"]),
+            ..Variable::default()
+        };
+        var.write_value("x", "bar").unwrap();
+    }
+
+    #[test]
+    fn write_value_success_if_in_scope() {
+        let mut var = Variable {
+            writers: VariableScope::from_str_list(&["foo"]),
+            ..Variable::default()
+        };
+        var.write_value("x", "foo").unwrap();
+        assert_eq!(var.read_value_unchecked().unwrap(), "x".to_string());
     }
 
     // - parsing
