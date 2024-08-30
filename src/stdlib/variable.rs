@@ -16,6 +16,10 @@ pub enum VariableError {
         value: String,
         reason: String,
     },
+    #[error("'{reader}' not in allowed scopes for var '{name}'")]
+    ReadNotAllowed { reader: String, name: String },
+    #[error("No value set for '{0}'")]
+    NoDefaultValueSet(String),
 }
 
 impl VariableError {
@@ -58,7 +62,6 @@ pub enum VariableScope {
     /// Scope is restried to the given names.
     Restricted(Vec<String>),
 }
-//TODO: Add current value
 
 /// A type representing a variable in a workflow.
 #[derive(Debug, PartialEq, Default)]
@@ -69,6 +72,7 @@ pub struct Variable {
     cli_flag: Option<String>,
     readers: VariableScope,
     writers: VariableScope,
+    value: Option<String>,
 }
 
 fn validate_name(name: &str) -> anyhow::Result<String> {
@@ -172,6 +176,13 @@ fn validate_scope(scopes: Option<Vec<String>>) -> anyhow::Result<VariableScope> 
     Ok(VariableScope::Global)
 }
 
+fn access_allowed<T: Into<String>>(scope: &VariableScope, entry: T) -> bool {
+    match scope {
+        VariableScope::Global => true,
+        VariableScope::Restricted(allowed) => allowed.contains(&entry.into()),
+    }
+}
+
 impl Variable {
     pub fn new(name: &str) -> Self {
         Variable {
@@ -182,6 +193,26 @@ impl Variable {
 
     pub fn name(&self) -> String {
         self.name.to_owned().clone()
+    }
+
+    fn read_value_unchecked(&self) -> anyhow::Result<String> {
+        match &self.value {
+            Some(value) => Ok(value.clone()),
+            None => match &self.default {
+                Some(value) => Ok(value.clone()),
+                None => bail!(VariableError::NoDefaultValueSet(self.name.clone())),
+            },
+        }
+    }
+
+    pub fn read_value(&self, reader: &str) -> anyhow::Result<String> {
+        if access_allowed(&self.readers, reader) {
+            return self.read_value_unchecked();
+        }
+        bail!(VariableError::ReadNotAllowed {
+            reader: reader.to_string(),
+            name: self.name().to_owned(),
+        });
     }
 
     fn from_starlark(
@@ -199,6 +230,7 @@ impl Variable {
             cli_flag: validate_cli_flag(cli_flag)?,
             readers: validate_scope(readers.map(|v| v.to_vec()))?,
             writers: validate_scope(writers.map(|v| v.to_vec()))?,
+            value: None,
         })
     }
 }
@@ -210,7 +242,7 @@ mod tests {
     use starlark::syntax::{AstModule, Dialect};
 
     impl VariableScope {
-        fn from_str_list(values: Vec<&str>) -> Self {
+        fn from_str_list(values: &[&str]) -> Self {
             VariableScope::Restricted(values.into_iter().map(|v| v.to_string()).collect())
         }
     }
@@ -224,7 +256,7 @@ mod tests {
     fn test_variable_scope_from_str_list() {
         assert_eq!(
             VariableScope::Restricted(vec!["a".to_string(), "b".to_string()]),
-            VariableScope::from_str_list(vec!["a", "b"])
+            VariableScope::from_str_list(&["a", "b"])
         );
     }
 
@@ -236,9 +268,22 @@ mod tests {
             VariableScope::Restricted(vec![])
         );
         assert_eq!(
-            VariableScope::from_str_list(vec!["a", "b"]),
-            VariableScope::from_str_list(vec!["a", "b"])
+            VariableScope::from_str_list(&["a", "b"]),
+            VariableScope::from_str_list(&["a", "b"])
         );
+    }
+
+    #[test]
+    fn test_variable_scope_allowed() {
+        let global = VariableScope::Global;
+        assert_eq!(access_allowed(&global, "foo"), true);
+        assert_eq!(access_allowed(&global, "".to_string()), true);
+
+        let restricted = VariableScope::from_str_list(&["a", "b"]);
+        assert_eq!(access_allowed(&restricted, "a"), true);
+        assert_eq!(access_allowed(&restricted, "b"), true);
+        assert_eq!(access_allowed(&restricted, "b".to_string()), true);
+        assert_eq!(access_allowed(&restricted, "c"), false);
     }
 
     // --- name
@@ -337,7 +382,7 @@ mod tests {
         assert_eq!(validate_scope(None).unwrap(), VariableScope::Global);
         assert_eq!(
             validate_scope(Some(["a".to_owned(), "b".to_owned()].to_vec())).unwrap(),
-            VariableScope::from_str_list(vec!["a", "b"]),
+            VariableScope::from_str_list(&["a", "b"]),
         );
     }
 
@@ -351,6 +396,35 @@ mod tests {
     #[should_panic]
     fn validate_scope_fail_spaces() {
         validate_scope(Some(["a b".to_owned()].to_vec())).unwrap();
+    }
+
+    // - Value
+
+    #[test]
+    fn empty_value_returns_default() {
+        let var = Variable {
+            default: Some("default".to_string()),
+            ..Variable::default()
+        };
+        assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "No value set for ''")]
+    fn empty_value_returns_fails_if_no_default() {
+        let var = Variable::default();
+        var.read_value_unchecked().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "'bar' not in allowed scopes for var ''")]
+    fn read_value_fails_if_not_in_scope() {
+        let var = Variable {
+            readers: VariableScope::from_str_list(&["foo"]),
+            default: Some("".to_string()),
+            ..Variable::default()
+        };
+        var.read_value("bar").unwrap();
     }
 
     // - parsing
@@ -406,8 +480,9 @@ variable(
                     default: Some("default".to_string()),
                     env: Some("FOO".to_string()),
                     cli_flag: Some("--foo".to_string()),
-                    readers: VariableScope::from_str_list(vec!["a", "b"]),
-                    writers: VariableScope::from_str_list(vec!["c", "d"]),
+                    readers: VariableScope::from_str_list(&["a", "b"]),
+                    writers: VariableScope::from_str_list(&["c", "d"]),
+                    ..Variable::default()
                 }
             );
             Ok(())

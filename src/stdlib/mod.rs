@@ -1,10 +1,9 @@
 pub mod variable;
 
 use crate::stdlib::variable::Variable;
+use anyhow::{anyhow, bail};
 use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
-// use std::cell::Ref;
-use anyhow::{anyhow, bail};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use thiserror::Error;
