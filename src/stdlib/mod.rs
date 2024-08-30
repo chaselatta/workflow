@@ -38,6 +38,15 @@ impl ParseContext {
         f(var)
     }
 
+    pub fn with_variable_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(Option<&mut Variable>) -> anyhow::Result<T>,
+    {
+        let mut vars = self.vars.borrow_mut();
+        let var = vars.get_mut(name);
+        f(var)
+    }
+
     pub fn add_variable(&self, var: Variable) -> anyhow::Result<()> {
         match self.vars.borrow_mut().insert(var.name(), var) {
             None => Ok(()),
@@ -112,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_cound() {
+    fn test_variable_count() {
         let ctx = ParseContext::default();
         let var1 = Variable::new("foo");
         let var2 = Variable::new("bar");
@@ -120,5 +129,25 @@ mod tests {
         let _ = ctx.add_variable(var2);
 
         assert_eq!(ctx.variable_count(), 2);
+    }
+
+    #[test]
+    fn test_with_variable_mutable_success() {
+        let ctx = ParseContext::default();
+        let var = Variable::new("foo");
+        let _ = ctx.add_variable(var);
+
+        let _ = ctx.with_variable_mut("foo", |v| {
+            if let Some(v) = v {
+                v.write_value("new", "test_writer")?;
+            }
+            Ok(())
+        });
+
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.unwrap().read_value("test_writer")?) })
+                .unwrap(),
+            "new".to_string()
+        );
     }
 }
