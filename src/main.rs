@@ -4,9 +4,7 @@ pub mod stdlib;
 use crate::cmd::Cli;
 use clap::Parser;
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    if let Err(e) = cli.parse_and_run() {
-        println!("ERROR: {}", e);
-    }
+    cli.parse_and_run()
 }
