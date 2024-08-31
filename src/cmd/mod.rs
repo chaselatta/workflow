@@ -1,9 +1,9 @@
-pub mod dump;
-use crate::cmd::dump::DumpArgs;
+pub mod describe;
+use crate::cmd::describe::DescribeArgs;
 use clap::{Args, Parser, Subcommand};
 
 pub trait RunCommand {
-    fn run(&self, global_args: &GlobalArgs) -> Result<(), String>;
+    fn run(&self, global_args: &GlobalArgs) -> anyhow::Result<()>;
 }
 
 #[derive(Args)]
@@ -15,8 +15,8 @@ pub struct GlobalArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Dumps the given workflow
-    Dump(DumpArgs),
+    /// Describes the given workflow
+    Describe(DescribeArgs),
 }
 
 #[derive(Parser)]
@@ -30,10 +30,10 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn parse_and_run(&self) -> Result<(), String> {
+    pub fn parse_and_run(&self) -> anyhow::Result<()> {
         match &self.command {
-            Commands::Dump(args) => {
-                return Ok(args.run(&self.global_args)?);
+            Commands::Describe(args) => {
+                return args.run(&self.global_args);
             }
         }
     }
