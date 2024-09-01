@@ -4,6 +4,7 @@ use starlark::eval::Evaluator;
 use starlark::starlark_module;
 use starlark::values::list::ListOf;
 use starlark::values::none::NoneType;
+use std::fmt;
 
 use anyhow::bail;
 use thiserror::Error;
@@ -66,6 +67,15 @@ pub enum VariableScope {
 
     /// Scope is restried to the given names.
     Restricted(Vec<String>),
+}
+
+impl fmt::Display for VariableScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VariableScope::Global => write!(f, "Global"),
+            VariableScope::Restricted(scopes) => write!(f, "Restricted: [{}]", scopes.join(", ")),
+        }
+    }
 }
 
 /// A type representing a variable in a workflow.
@@ -294,6 +304,15 @@ mod tests {
         fn from_str_list(values: &[&str]) -> Self {
             VariableScope::Restricted(values.into_iter().map(|v| v.to_string()).collect())
         }
+    }
+
+    #[test]
+    fn test_variable_scope_display() {
+        assert_eq!("Global", format!("{}", VariableScope::Global));
+        assert_eq!(
+            "Restricted: [a, b]",
+            format!("{}", VariableScope::from_str_list(&["a", "b"]))
+        );
     }
 
     #[test]
