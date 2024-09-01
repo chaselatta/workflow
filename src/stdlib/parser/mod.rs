@@ -5,7 +5,6 @@ use crate::stdlib::variable::starlark_variable;
 
 use starlark::environment::Globals;
 use starlark::environment::GlobalsBuilder;
-use starlark::environment::Module;
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
 use std::path::PathBuf;
@@ -30,7 +29,7 @@ impl Parser {
         };
     }
 
-    fn parse_content<'a>(
+    pub fn parse_content<'a>(
         &'a self,
         filename: &str,
         content: String,
@@ -64,6 +63,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use starlark::environment::Module;
 
     #[test]
     fn test_parser_new() {
