@@ -1,0 +1,171 @@
+use crate::stdlib::variable::{FrozenVariable, Variable};
+use anyhow::{anyhow, bail};
+use starlark::eval::Evaluator;
+use starlark::values::ProvidesStaticType;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ParseContextError {
+    #[error("Variable(name = {name}) already exists in this context")]
+    VariableAlreadyExists { name: String },
+    #[error("Missing ParseContext from evaluator")]
+    MissingParseContext,
+}
+
+#[derive(Debug, ProvidesStaticType, Default, PartialEq)]
+pub struct ParseContext {
+    vars: RefCell<HashMap<String, Variable>>,
+}
+
+impl ParseContext {
+    pub fn from_evaluator<'a>(eval: &'a Evaluator) -> anyhow::Result<&'a ParseContext> {
+        if let Some(extra) = eval.extra {
+            return Ok(extra.downcast_ref::<ParseContext>().unwrap());
+        }
+        bail!(ParseContextError::MissingParseContext);
+    }
+
+    pub fn with_variable<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(Option<&Variable>) -> anyhow::Result<T>,
+    {
+        let vars = self.vars.borrow();
+        let var = vars.get(name);
+        f(var)
+    }
+
+    pub fn with_variable_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(Option<&mut Variable>) -> anyhow::Result<T>,
+    {
+        let mut vars = self.vars.borrow_mut();
+        let var = vars.get_mut(name);
+        f(var)
+    }
+
+    pub fn add_variable(&self, var: Variable) -> anyhow::Result<()> {
+        match self.vars.borrow_mut().insert(var.name(), var) {
+            None => Ok(()),
+            Some(var) => Err(anyhow!(ParseContextError::VariableAlreadyExists {
+                name: var.name()
+            })),
+        }
+    }
+
+    /// Returns a Vec of FrozenVariable objects which represent the
+    /// variables at the time of calling. The variables cannot be
+    /// updated and should not be held at a later time.
+    pub fn snapshot_variables(&self) -> Vec<FrozenVariable> {
+        self.vars
+            .borrow()
+            .values()
+            .map(|v| FrozenVariable::from(v))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use starlark::environment::Module;
+
+    #[test]
+    #[should_panic]
+    fn test_from_evaluator_none() {
+        let module: Module = Module::new();
+        let eval: Evaluator = Evaluator::new(&module);
+
+        ParseContext::from_evaluator(&eval).unwrap();
+    }
+
+    #[test]
+    fn test_from_evaluator_some() {
+        let module: Module = Module::new();
+        let mut eval: Evaluator = Evaluator::new(&module);
+        let ctx = ParseContext::default();
+
+        eval.extra = Some(&ctx);
+        // Need to box this otherwise it will go out of scope
+        // before we use it
+        let boxed = Box::new(eval); // box extends the lifetime.
+        assert_eq!(ParseContext::from_evaluator(&*boxed).unwrap(), &ctx);
+    }
+
+    #[test]
+    fn test_add_variable_success() {
+        let ctx = ParseContext::default();
+        let var = Variable::new("foo");
+
+        assert!(ctx.add_variable(var).is_ok());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_variable_twice_fails() {
+        let ctx = ParseContext::default();
+        let var1 = Variable::new("foo");
+        let var2 = Variable::new("foo");
+
+        ctx.add_variable(var1).unwrap();
+        // Fail here
+        ctx.add_variable(var2).unwrap();
+    }
+
+    #[test]
+    fn test_with_variable_success() {
+        let ctx = ParseContext::default();
+        let var = Variable::new("foo");
+        let _ = ctx.add_variable(var);
+
+        let _ = ctx.with_variable("foo", |v| {
+            assert_eq!(&v.unwrap().name(), "foo");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_variable_count() {
+        let ctx = ParseContext::default();
+        let var1 = Variable::new("foo");
+        let var2 = Variable::new("bar");
+        let _ = ctx.add_variable(var1);
+        let _ = ctx.add_variable(var2);
+
+        assert_eq!(ctx.snapshot_variables().len(), 2);
+    }
+
+    #[test]
+    fn test_with_variable_mutable_success() {
+        let ctx = ParseContext::default();
+        let var = Variable::new("foo");
+        let _ = ctx.add_variable(var);
+
+        let _ = ctx.with_variable_mut("foo", |v| {
+            if let Some(v) = v {
+                v.write_value("new", "test_writer")?;
+            }
+            Ok(())
+        });
+
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.unwrap().read_value("test_writer")?) })
+                .unwrap(),
+            "new".to_string()
+        );
+    }
+
+    #[test]
+    fn test_froze_variables() {
+        let ctx = ParseContext::default();
+        let var1 = Variable::new("foo");
+        let var2 = Variable::new("bar");
+        let _ = ctx.add_variable(var1);
+        let _ = ctx.add_variable(var2);
+
+        let frozen = ctx.snapshot_variables();
+
+        assert_eq!(frozen.len(), 2);
+    }
+}
