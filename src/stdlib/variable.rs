@@ -1,4 +1,4 @@
-use crate::stdlib::ParseContext;
+use crate::stdlib::parser::parse_context::ParseContext;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
@@ -58,7 +58,7 @@ pub fn starlark_variable(builder: &mut GlobalsBuilder) {
 /// A enum representing the scope of a variable.
 ///
 /// Variables are scoped to actions by their name.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub enum VariableScope {
     /// Can be accessed by any action.
     #[default]
@@ -253,6 +253,34 @@ impl Variable {
             writers: validate_scope(writers.map(|v| v.to_vec()))?,
             value: None,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct FrozenVariable {
+    pub name: String,
+    pub default: Option<String>,
+    pub env: Option<String>,
+    pub cli_flag: Option<String>,
+    pub readers: VariableScope,
+    pub writers: VariableScope,
+    pub value: Option<String>,
+}
+
+impl From<&Variable> for FrozenVariable {
+    fn from(item: &Variable) -> Self {
+        FrozenVariable {
+            name: item.name(),
+            default: item.default.clone(),
+            env: item.env.clone(),
+            cli_flag: item.cli_flag.clone(),
+            readers: item.readers.clone(),
+            writers: item.writers.clone(),
+            value: match item.read_value_unchecked() {
+                Ok(v) => Some(v),
+                _ => None,
+            },
+        }
     }
 }
 
@@ -521,7 +549,7 @@ variable(
             AstModule::parse("test.star", starlark_code.to_owned(), &Dialect::Standard).unwrap();
         let _res = eval.eval_module(ast, &globals).unwrap();
 
-        assert_eq!(ctx.variable_count(), 2);
+        assert_eq!(ctx.snapshot_variables().len(), 2);
     }
 
     #[test]
@@ -560,5 +588,27 @@ variable(
             );
             Ok(())
         });
+    }
+
+    // -- Frozen Variables
+    #[test]
+    fn test_frozen_variable() {
+        let var = Variable {
+            name: "foo".to_string(),
+            default: Some("default".to_string()),
+            env: Some("FOO".to_string()),
+            cli_flag: Some("--foo".to_string()),
+            readers: VariableScope::from_str_list(&["a", "b"]),
+            writers: VariableScope::from_str_list(&["c", "d"]),
+            ..Variable::default()
+        };
+        let frozen = FrozenVariable::from(&var);
+        assert_eq!(frozen.name, var.name);
+        assert_eq!(frozen.default, var.default);
+        assert_eq!(frozen.env, var.env);
+        assert_eq!(frozen.cli_flag, var.cli_flag);
+        assert_eq!(frozen.readers, var.readers);
+        assert_eq!(frozen.writers, var.writers);
+        assert_eq!(frozen.value, var.default);
     }
 }
