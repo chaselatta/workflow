@@ -594,7 +594,7 @@ variable(
 
         let _ = ctx.with_variable("foo", |v| {
             assert_eq!(
-                v.unwrap(),
+                v,
                 &Variable {
                     name: "foo".to_string(),
                     default: Some("default".to_string()),

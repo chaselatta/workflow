@@ -8,8 +8,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ParseContextError {
-    #[error("Variable(name = {name}) already exists in this context")]
-    VariableAlreadyExists { name: String },
+    #[error("Variable(name = '{0}') already exists in this context")]
+    VariableAlreadyExists(String),
+    #[error("Variable(name = '{0}') does not exists in this context")]
+    UnknownVariable(String),
     #[error("Missing ParseContext from evaluator")]
     MissingParseContext,
 }
@@ -29,28 +31,34 @@ impl ParseContext {
 
     pub fn with_variable<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
     where
-        F: FnOnce(Option<&Variable>) -> anyhow::Result<T>,
+        F: FnOnce(&Variable) -> anyhow::Result<T>,
     {
         let vars = self.vars.borrow();
-        let var = vars.get(name);
-        f(var)
+        if let Some(var) = vars.get(name) {
+            f(var)
+        } else {
+            bail!(ParseContextError::UnknownVariable(name.to_string()))
+        }
     }
 
     pub fn with_variable_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
     where
-        F: FnOnce(Option<&mut Variable>) -> anyhow::Result<T>,
+        F: FnOnce(&mut Variable) -> anyhow::Result<T>,
     {
         let mut vars = self.vars.borrow_mut();
-        let var = vars.get_mut(name);
-        f(var)
+        if let Some(var) = vars.get_mut(name) {
+            f(var)
+        } else {
+            bail!(ParseContextError::UnknownVariable(name.to_string()))
+        }
     }
 
     pub fn add_variable(&self, var: Variable) -> anyhow::Result<()> {
         match self.vars.borrow_mut().insert(var.name(), var) {
             None => Ok(()),
-            Some(var) => Err(anyhow!(ParseContextError::VariableAlreadyExists {
-                name: var.name()
-            })),
+            Some(var) => Err(anyhow!(ParseContextError::VariableAlreadyExists(
+                var.name()
+            ))),
         }
     }
 
@@ -120,9 +128,23 @@ mod tests {
         let _ = ctx.add_variable(var);
 
         let _ = ctx.with_variable("foo", |v| {
-            assert_eq!(&v.unwrap().name(), "foo");
+            assert_eq!(&v.name(), "foo");
             Ok(())
         });
+    }
+
+    #[test]
+    #[should_panic(expected = "Variable(name = 'foo') does not exists in this context")]
+    fn test_with_variable_fails_if_missing_variable() {
+        let ctx = ParseContext::default();
+        ctx.with_variable("foo", |_v| Ok(())).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Variable(name = 'foo') does not exists in this context")]
+    fn test_with_variable_mut_fails_if_missing_variable() {
+        let ctx = ParseContext::default();
+        ctx.with_variable_mut("foo", |_v| Ok(())).unwrap();
     }
 
     #[test]
@@ -143,14 +165,12 @@ mod tests {
         let _ = ctx.add_variable(var);
 
         let _ = ctx.with_variable_mut("foo", |v| {
-            if let Some(v) = v {
-                v.write_value("new", "test_writer")?;
-            }
+            v.write_value("new", "test_writer")?;
             Ok(())
         });
 
         assert_eq!(
-            ctx.with_variable("foo", |v| { Ok(v.unwrap().read_value("test_writer")?) })
+            ctx.with_variable("foo", |v| { Ok(v.read_value("test_writer")?) })
                 .unwrap(),
             "new".to_string()
         );

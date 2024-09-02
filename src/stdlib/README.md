@@ -17,9 +17,12 @@ a value to make this globally writeable
 
 
 ### Using variables (not yet implemented)
-Variables can be used from within the workflow by using the `use_var` method.
+Variables can be used from within the workflow by using string interpolation. To
+use a variable in a string you place the name between `{}` inside the string. The
+variable will be evaluated at the time of using the string.
+
 ```
-example = "some string" + use_var("foo")
+args = [ "--foo={foo}" ]
 ```
 
 In order to use the variable the calling context must be available in the `readers`
