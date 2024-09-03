@@ -1,12 +1,20 @@
 variable(
-  name =  "some_name",
+  name =  "var_1",
   default =  "some default",
   readers =  ["foo", "bar"],
   writers =  ["foo", "bar"],
-  cli_flag =  "--some-name",
-  env =  "ENV_VAR",
+  cli_flag =  "--foo",
+  env =  "VAR_ONE",
 )
 
 variable(
-  name = "foo",
+  name =  "var_2",
+  default =  "some default",
+  readers =  ["foo", "bar"],
+  writers =  ["foo", "bar"],
+  env =  "VAR_TWO",
+)
+
+variable(
+  name =  "var_3",
 )

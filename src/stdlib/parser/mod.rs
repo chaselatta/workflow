@@ -101,6 +101,6 @@ def foo():
 
         parser.parse_workflow_file(file, &mut eval).unwrap();
 
-        assert_eq!(parser.ctx.snapshot_variables().len(), 2);
+        assert_eq!(parser.ctx.snapshot_variables().len(), 3);
     }
 }

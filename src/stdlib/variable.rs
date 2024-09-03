@@ -78,16 +78,57 @@ impl fmt::Display for VariableScope {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum ValueUpdatedBy {
+    CLIFlag(String),
+    EnvironmentVariable(String),
+    Action(String),
+    DefaultValue,
+
+    #[cfg(test)]
+    ForTest,
+}
+
+impl fmt::Display for ValueUpdatedBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValueUpdatedBy::CLIFlag(v) => write!(f, "Updated by command line flag '{}'", v),
+            ValueUpdatedBy::EnvironmentVariable(v) => {
+                write!(f, "Updated by environment variable '{}'", v)
+            }
+            ValueUpdatedBy::Action(v) => write!(f, "Updated by action with name'{}'", v),
+            ValueUpdatedBy::DefaultValue => write!(f, "Updated by default value"),
+
+            #[cfg(test)]
+            ValueUpdatedBy::ForTest => write!(f, "for testing"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ValueContext {
+    pub value: String,
+    pub updated_by: ValueUpdatedBy,
+}
+
+impl ValueContext {
+    fn new<T: Into<String>>(value: T, updated_by: ValueUpdatedBy) -> Self {
+        ValueContext {
+            value: value.into(),
+            updated_by: updated_by,
+        }
+    }
+}
+
 /// A type representing a variable in a workflow.
 #[derive(Debug, PartialEq, Default)]
 pub struct Variable {
     name: String,
-    default: Option<String>,
     env: Option<String>,
     cli_flag: Option<String>,
     readers: VariableScope,
     writers: VariableScope,
-    value: Option<String>,
+    value_ctx: Option<ValueContext>,
 }
 
 fn validate_name(name: &str) -> anyhow::Result<String> {
@@ -215,9 +256,9 @@ impl Variable {
     ) -> Self {
         Variable {
             name: name.to_string(),
-            default: default.map(|v| v.to_string()),
             env: env.map(|v| v.to_string()),
             cli_flag: cli_flag.map(|v| v.to_string()),
+            value_ctx: default.map(|v| ValueContext::new(v, ValueUpdatedBy::ForTest)),
             ..Variable::default()
         }
     }
@@ -227,12 +268,9 @@ impl Variable {
     }
 
     fn read_value_unchecked(&self) -> anyhow::Result<String> {
-        match &self.value {
-            Some(value) => Ok(value.clone()),
-            None => match &self.default {
-                Some(value) => Ok(value.clone()),
-                None => bail!(VariableError::NoDefaultValueSet(self.name.clone())),
-            },
+        match &self.value_ctx {
+            Some(ctx) => Ok(ctx.value.clone()),
+            None => bail!(VariableError::NoDefaultValueSet(self.name.clone())),
         }
     }
 
@@ -246,13 +284,16 @@ impl Variable {
         });
     }
 
-    fn write_value_unchecked<T: Into<String>>(&mut self, value: T) {
-        self.value = Some(value.into());
+    fn write_value_unchecked<T: Into<String>>(&mut self, value: T, updated_by: ValueUpdatedBy) {
+        self.value_ctx = Some(ValueContext {
+            value: value.into(),
+            updated_by: updated_by,
+        });
     }
 
     pub fn write_value<T: Into<String>>(&mut self, value: T, writer: &str) -> anyhow::Result<()> {
         if access_allowed(&self.writers, writer) {
-            self.write_value_unchecked(value);
+            self.write_value_unchecked(value, ValueUpdatedBy::Action(writer.to_string()));
             Ok(())
         } else {
             bail!(VariableError::WriteNotAllowed {
@@ -265,7 +306,7 @@ impl Variable {
     pub fn try_update_value_from_cli_flag(&mut self, args: &Vec<String>) -> anyhow::Result<()> {
         if let Some(cli_flag) = &self.cli_flag {
             if let Some(value) = find_cli_flag_value(cli_flag, args) {
-                self.write_value_unchecked(value);
+                self.write_value_unchecked(value, ValueUpdatedBy::CLIFlag(cli_flag.clone()));
                 return Ok(());
             } else {
                 bail!(
@@ -285,7 +326,7 @@ impl Variable {
     pub fn try_update_value_from_env(&mut self) -> anyhow::Result<()> {
         if let Some(key) = &self.env {
             if let Ok(val) = std::env::var(key) {
-                self.write_value_unchecked(val);
+                self.write_value_unchecked(val, ValueUpdatedBy::EnvironmentVariable(key.clone()));
                 return Ok(());
             } else {
                 bail!("Cannot update '{}' from environemnt: '{}' has no associated environment variable", self.name, key);
@@ -308,12 +349,11 @@ impl Variable {
     ) -> anyhow::Result<Self> {
         Ok(Variable {
             name: validate_name(name)?,
-            default: default.map(|d| d.to_string()),
             env: validate_env(env)?,
             cli_flag: validate_cli_flag(cli_flag)?,
             readers: validate_scope(readers.map(|v| v.to_vec()))?,
             writers: validate_scope(writers.map(|v| v.to_vec()))?,
-            value: None,
+            value_ctx: default.map(|d| ValueContext::new(d, ValueUpdatedBy::DefaultValue)),
         })
     }
 }
@@ -321,27 +361,22 @@ impl Variable {
 #[derive(Debug)]
 pub struct FrozenVariable {
     pub name: String,
-    pub default: Option<String>,
     pub env: Option<String>,
     pub cli_flag: Option<String>,
     pub readers: VariableScope,
     pub writers: VariableScope,
-    pub value: Option<String>,
+    pub value: Option<ValueContext>,
 }
 
 impl From<&Variable> for FrozenVariable {
     fn from(item: &Variable) -> Self {
         FrozenVariable {
             name: item.name(),
-            default: item.default.clone(),
             env: item.env.clone(),
             cli_flag: item.cli_flag.clone(),
             readers: item.readers.clone(),
             writers: item.writers.clone(),
-            value: match item.read_value_unchecked() {
-                Ok(v) => Some(v),
-                _ => None,
-            },
+            value: item.value_ctx.clone(),
         }
     }
 }
@@ -473,11 +508,12 @@ mod tests {
             "ENV_VAR_FOR_test_try_update_value_from_env_success",
             "some_value",
         );
-        let mut var = Variable {
-            default: Some("default".to_string()),
-            env: Some(env.key.clone()),
-            ..Variable::default()
-        };
+        let mut var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some("default"),
+            /* cli_flag */ None,
+            /* env */ Some(&env.key.clone()),
+        );
         assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
         var.try_update_value_from_env().unwrap();
         assert_eq!(
@@ -550,11 +586,12 @@ mod tests {
 
     #[test]
     fn test_try_update_value_from_cli_flag_short_success() {
-        let mut var = Variable {
-            default: Some("default".to_string()),
-            cli_flag: Some("-f".to_string()),
-            ..Variable::default()
-        };
+        let mut var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some("default"),
+            /* cli_flag */ Some("-f"),
+            /* env */ None,
+        );
         assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
         var.try_update_value_from_cli_flag(&vec![
             "--bar".to_string(),
@@ -568,11 +605,12 @@ mod tests {
 
     #[test]
     fn test_try_update_value_from_cli_flag_long_success() {
-        let mut var = Variable {
-            default: Some("default".to_string()),
-            cli_flag: Some("--foo".to_string()),
-            ..Variable::default()
-        };
+        let mut var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some("default"),
+            /* cli_flag */ Some("--foo"),
+            /* env */ None,
+        );
         assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
         var.try_update_value_from_cli_flag(&vec![
             "--bar".to_string(),
@@ -636,10 +674,12 @@ mod tests {
 
     #[test]
     fn empty_value_returns_default() {
-        let var = Variable {
-            default: Some("default".to_string()),
-            ..Variable::default()
-        };
+        let var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some("default"),
+            /* cli_flag */ None,
+            /* env */ None,
+        );
         assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
     }
 
@@ -653,7 +693,7 @@ mod tests {
     #[test]
     fn read_value_succes_if_in_scope() {
         let var = Variable {
-            default: Some("default".to_string()),
+            value_ctx: Some(ValueContext::new("default", ValueUpdatedBy::ForTest)),
             readers: VariableScope::from_str_list(&["foo"]),
             ..Variable::default()
         };
@@ -665,7 +705,7 @@ mod tests {
     fn read_value_fails_if_not_in_scope() {
         let var = Variable {
             readers: VariableScope::from_str_list(&["foo"]),
-            default: Some("".to_string()),
+            value_ctx: Some(ValueContext::new("", ValueUpdatedBy::ForTest)),
             ..Variable::default()
         };
         var.read_value("bar").unwrap();
@@ -674,10 +714,10 @@ mod tests {
     #[test]
     fn write_value_success() {
         let mut var = Variable {
-            default: Some("default".to_string()),
+            value_ctx: Some(ValueContext::new("default", ValueUpdatedBy::ForTest)),
             ..Variable::default()
         };
-        var.write_value_unchecked("new");
+        var.write_value_unchecked("new", ValueUpdatedBy::ForTest);
         assert_eq!(var.read_value_unchecked().unwrap(), "new".to_string());
     }
 
@@ -686,10 +726,10 @@ mod tests {
         let mut var = Variable {
             ..Variable::default()
         };
-        var.write_value_unchecked("new");
+        var.write_value_unchecked("new", ValueUpdatedBy::ForTest);
         assert_eq!(var.read_value_unchecked().unwrap(), "new".to_string());
 
-        var.write_value_unchecked("next".to_string());
+        var.write_value_unchecked("next".to_string(), ValueUpdatedBy::ForTest);
         assert_eq!(var.read_value_unchecked().unwrap(), "next".to_string());
     }
 
@@ -763,11 +803,11 @@ variable(
                 v,
                 &Variable {
                     name: "foo".to_string(),
-                    default: Some("default".to_string()),
                     env: Some("FOO".to_string()),
                     cli_flag: Some("--foo".to_string()),
                     readers: VariableScope::from_str_list(&["a", "b"]),
                     writers: VariableScope::from_str_list(&["c", "d"]),
+                    value_ctx: Some(ValueContext::new("default", ValueUpdatedBy::DefaultValue)),
                     ..Variable::default()
                 }
             );
@@ -780,20 +820,19 @@ variable(
     fn test_frozen_variable() {
         let var = Variable {
             name: "foo".to_string(),
-            default: Some("default".to_string()),
             env: Some("FOO".to_string()),
             cli_flag: Some("--foo".to_string()),
             readers: VariableScope::from_str_list(&["a", "b"]),
             writers: VariableScope::from_str_list(&["c", "d"]),
+            value_ctx: Some(ValueContext::new("default", ValueUpdatedBy::ForTest)),
             ..Variable::default()
         };
         let frozen = FrozenVariable::from(&var);
         assert_eq!(frozen.name, var.name);
-        assert_eq!(frozen.default, var.default);
         assert_eq!(frozen.env, var.env);
         assert_eq!(frozen.cli_flag, var.cli_flag);
         assert_eq!(frozen.readers, var.readers);
         assert_eq!(frozen.writers, var.writers);
-        assert_eq!(frozen.value, var.default);
+        assert_eq!(frozen.value, var.value_ctx);
     }
 }
