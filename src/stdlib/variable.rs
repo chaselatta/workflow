@@ -206,6 +206,22 @@ impl Variable {
         }
     }
 
+    #[cfg(test)]
+    pub fn for_test(
+        name: &str,
+        default: Option<&str>,
+        cli_flag: Option<&str>,
+        env: Option<&str>,
+    ) -> Self {
+        Variable {
+            name: name.to_string(),
+            default: default.map(|v| v.to_string()),
+            env: env.map(|v| v.to_string()),
+            cli_flag: cli_flag.map(|v| v.to_string()),
+            ..Variable::default()
+        }
+    }
+
     pub fn name(&self) -> String {
         self.name.to_owned().clone()
     }
@@ -243,6 +259,42 @@ impl Variable {
                 writer: writer.to_string(),
                 name: self.name().to_owned(),
             })
+        }
+    }
+
+    pub fn try_update_value_from_cli_flag(&mut self, args: &Vec<String>) -> anyhow::Result<()> {
+        if let Some(cli_flag) = &self.cli_flag {
+            if let Some(value) = find_cli_flag_value(cli_flag, args) {
+                self.write_value_unchecked(value);
+                return Ok(());
+            } else {
+                bail!(
+                    "Cannot update '{}' from cli_flag: '{}' is not in args",
+                    self.name,
+                    cli_flag,
+                );
+            }
+        } else {
+            bail!(
+                "Cannot update '{}' from cli_flag: no cli_flag set for this variable",
+                self.name
+            )
+        }
+    }
+
+    pub fn try_update_value_from_env(&mut self) -> anyhow::Result<()> {
+        if let Some(key) = &self.env {
+            if let Ok(val) = std::env::var(key) {
+                self.write_value_unchecked(val);
+                return Ok(());
+            } else {
+                bail!("Cannot update '{}' from environemnt: '{}' has no associated environment variable", self.name, key);
+            }
+        } else {
+            bail!(
+                "Cannot update '{}' from environemnt: no env set for this variable",
+                self.name
+            );
         }
     }
 
@@ -294,9 +346,20 @@ impl From<&Variable> for FrozenVariable {
     }
 }
 
+fn find_cli_flag_value(flag: &str, workflow_args: &Vec<String>) -> Option<String> {
+    let mut iter = workflow_args.into_iter();
+    while let Some(val) = iter.next() {
+        if val == flag {
+            return iter.next().cloned();
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::test_utils::TempEnvVar;
     use starlark::environment::Module;
     use starlark::syntax::{AstModule, Dialect};
 
@@ -404,6 +467,48 @@ mod tests {
         validate_env(Some(" ")).unwrap();
     }
 
+    #[test]
+    fn test_try_update_value_from_env_success() {
+        let env = TempEnvVar::new(
+            "ENV_VAR_FOR_test_try_update_value_from_env_success",
+            "some_value",
+        );
+        let mut var = Variable {
+            default: Some("default".to_string()),
+            env: Some(env.key.clone()),
+            ..Variable::default()
+        };
+        assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
+        var.try_update_value_from_env().unwrap();
+        assert_eq!(
+            var.read_value_unchecked().unwrap(),
+            "some_value".to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Cannot update 'foo' from environemnt: 'NUL' has no associated environment variable"
+    )]
+    fn test_try_update_value_from_env_fail_invalid_env_set() {
+        let mut var = Variable {
+            name: "foo".to_string(),
+            env: Some("NUL".to_string()),
+            ..Variable::default()
+        };
+        var.try_update_value_from_env().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot update 'foo' from environemnt: no env set for this variable")]
+    fn test_try_update_value_from_env_fail_no_env_set() {
+        let mut var = Variable {
+            name: "foo".to_string(),
+            ..Variable::default()
+        };
+        var.try_update_value_from_env().unwrap();
+    }
+
     // --- cli_flag
 
     #[test]
@@ -441,6 +546,67 @@ mod tests {
     #[should_panic]
     fn validate_cli_flag_fail_two_dashes() {
         validate_cli_flag(Some("--")).unwrap();
+    }
+
+    #[test]
+    fn test_try_update_value_from_cli_flag_short_success() {
+        let mut var = Variable {
+            default: Some("default".to_string()),
+            cli_flag: Some("-f".to_string()),
+            ..Variable::default()
+        };
+        assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
+        var.try_update_value_from_cli_flag(&vec![
+            "--bar".to_string(),
+            "a".to_string(),
+            "-f".to_string(),
+            "foo".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(var.read_value_unchecked().unwrap(), "foo".to_string());
+    }
+
+    #[test]
+    fn test_try_update_value_from_cli_flag_long_success() {
+        let mut var = Variable {
+            default: Some("default".to_string()),
+            cli_flag: Some("--foo".to_string()),
+            ..Variable::default()
+        };
+        assert_eq!(var.read_value_unchecked().unwrap(), "default".to_string());
+        var.try_update_value_from_cli_flag(&vec![
+            "--bar".to_string(),
+            "a".to_string(),
+            "--foo".to_string(),
+            "foo".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(var.read_value_unchecked().unwrap(), "foo".to_string());
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Cannot update 'foo' from cli_flag: no cli_flag set for this variable"
+    )]
+    // Cannot update '{}' from cli_flag: '{}' is not in args
+    fn test_try_update_value_from_cli_flag_fail_not_set() {
+        let mut var = Variable {
+            name: "foo".to_string(),
+            ..Variable::default()
+        };
+        var.try_update_value_from_cli_flag(&vec![]).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot update 'foo' from cli_flag: '--foo' is not in args")]
+    // Cannot update '{}' from cli_flag: '{}' is not in args
+    fn test_try_update_value_from_cli_flag_fail_not_in_args() {
+        let mut var = Variable {
+            name: "foo".to_string(),
+            cli_flag: Some("--foo".to_string()),
+            ..Variable::default()
+        };
+        var.try_update_value_from_cli_flag(&vec![]).unwrap();
     }
 
     // -- Scopes

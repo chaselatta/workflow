@@ -72,11 +72,34 @@ impl ParseContext {
             .map(|v| FrozenVariable::from(v))
             .collect()
     }
+
+    /// Updates the variables in the ctx based on the command line flags and
+    /// environment variables.
+    /// workflow_args is a list of strings that follows the form of
+    /// ["--foo", "a", "--bar", "b"] where the value follows the flag.
+    pub fn realize_variables(&self, workflow_args: &Vec<String>) {
+        let variables = self.snapshot_variables();
+        for frozen_var in variables {
+            let _ = self.with_variable_mut(&frozen_var.name, |v| {
+                // First, check to see if there is a command line flag that matches
+                if v.try_update_value_from_cli_flag(workflow_args).is_ok() {
+                    return Ok(());
+                }
+                // Next,  try to set the value from theenv
+                if v.try_update_value_from_env().is_ok() {
+                    return Ok(());
+                }
+                // Nothing to update, fall back to the default
+                Ok(())
+            });
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::test_utils::TempEnvVar;
     use starlark::environment::Module;
 
     #[test]
@@ -177,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn test_froze_variables() {
+    fn test_frozen_variables() {
         let ctx = ParseContext::default();
         let var1 = Variable::new("foo");
         let var2 = Variable::new("bar");
@@ -187,5 +210,95 @@ mod tests {
         let frozen = ctx.snapshot_variables();
 
         assert_eq!(frozen.len(), 2);
+    }
+
+    #[test]
+    fn test_realize_variables_env() {
+        let ctx = ParseContext::default();
+        let env = TempEnvVar::new("ENV_VAR_FOR_test_realize_variables_env", "some_value");
+        let var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some(""),
+            /* cli_flag */ None,
+            /* env */ Some(&env.key.clone()),
+        );
+        ctx.add_variable(var).unwrap();
+
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "".to_string()
+        );
+
+        ctx.realize_variables(&vec![]);
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "some_value".to_string()
+        );
+    }
+
+    #[test]
+    fn test_realize_variables_cli_flag() {
+        let ctx = ParseContext::default();
+        let var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some(""),
+            /* cli_flag */ Some("--foo"),
+            /* env */ None,
+        );
+        ctx.add_variable(var).unwrap();
+
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "".to_string()
+        );
+
+        ctx.realize_variables(&vec![
+            "--bar".to_string(),
+            "a".to_string(),
+            "--foo".to_string(),
+            "b".to_string(),
+        ]);
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "b".to_string(),
+        );
+    }
+
+    #[test]
+    fn test_realize_variables_honors_order() {
+        let env = TempEnvVar::new(
+            "ENV_VAR_FOR_test_realize_variables_honors_order",
+            "some_value",
+        );
+        let ctx = ParseContext::default();
+        let var = Variable::for_test(
+            /* name */ "foo",
+            /* default */ Some(""),
+            /* cli_flag */ Some("--foo"),
+            /* env */ Some(&env.key.clone()),
+        );
+        ctx.add_variable(var).unwrap();
+
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "".to_string()
+        );
+
+        ctx.realize_variables(&vec![
+            "--bar".to_string(),
+            "a".to_string(),
+            "--foo".to_string(),
+            "b".to_string(),
+        ]);
+        assert_eq!(
+            ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
+                .unwrap(),
+            "b".to_string(),
+        );
     }
 }
