@@ -14,6 +14,10 @@ use starlark::eval::Evaluator;
 pub struct DescribeArgs {
     /// The path to the workflow to describe
     pub workflow: PathBuf,
+
+    /// The additional arguments that will be passed along to the workflow
+    #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+    pub workflow_args: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -107,6 +111,7 @@ impl RunCommand for DescribeArgs {
             let mut eval: Evaluator = Evaluator::new(&module);
 
             parser.parse_workflow_file(self.workflow.clone(), &mut eval)?;
+            parser.ctx.realize_variables(&self.workflow_args);
 
             print_header("Variables", 80);
             for v in parser.ctx.snapshot_variables() {

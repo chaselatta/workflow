@@ -28,11 +28,11 @@ args = [ "--foo={foo}" ]
 In order to use the variable the calling context must be available in the `readers`
 scope of the variable or the scope must be global.
 
-### Updating variables (not yet implemented)
+### Updating variables
 Variables will originally take their value from one of the following places
 in the given order:
-1. The value from `cli_flag` if present (not yet implemented)
-1. The `env` variable if present (not yet implemented)
+1. The value from `cli_flag` if present
+1. The `env` variable if present
 1. The `default` value
 1. A value later updated in the workflow (not yet implemented)
 
