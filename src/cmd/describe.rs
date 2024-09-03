@@ -28,12 +28,12 @@ struct AlignedRecord {
 }
 
 impl AlignedRecord {
-    fn new<T: Into<String>>(left: T, right: T) -> Self {
+    fn new<T: Into<String>>(left: T, right: String) -> Self {
         let left = left.into();
         let size = left.len();
         AlignedRecord {
             left: left,
-            right: right.into(),
+            right: right,
             size: size,
         }
     }
@@ -74,20 +74,30 @@ fn format_optional_string(v: Option<String>) -> String {
 }
 
 fn print_variable(var: &FrozenVariable) {
-    println!("{}:", Cyan.paint(var.name.clone()));
+    println!("{}: ", Cyan.paint(var.name.clone()));
+
     let records = vec![
-        AlignedRecord::new("env", &format_optional_string(var.env.clone())),
-        AlignedRecord::new("default", &format_optional_string(var.default.clone())),
-        AlignedRecord::new("cli_flag", &format_optional_string(var.cli_flag.clone())),
+        AlignedRecord::new("env", format_optional_string(var.env.clone())),
+        AlignedRecord::new("cli_flag", format_optional_string(var.cli_flag.clone())),
         AlignedRecord::new(
             "readers",
-            &format!("{}", Green.paint(format!("{}", var.readers))),
+            format!("{}", Green.paint(format!("{}", var.readers))),
         ),
         AlignedRecord::new(
             "writers",
-            &format!("{}", Green.paint(format!("{}", var.writers))),
+            format!("{}", Green.paint(format!("{}", var.writers))),
         ),
-        AlignedRecord::new("value", &format_optional_string(var.value.clone())),
+        AlignedRecord::new(
+            "value",
+            format_optional_string(var.value.clone().map(|v| v.value)),
+        ),
+        AlignedRecord::new(
+            "context",
+            match &var.value {
+                Some(v) => format!("{}", v.clone().updated_by),
+                None => "Value has never been set".to_string(),
+            },
+        ),
     ];
     let mut max = 0;
     for r in &records {
