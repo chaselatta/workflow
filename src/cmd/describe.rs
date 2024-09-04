@@ -1,5 +1,6 @@
 use crate::cmd::{GlobalArgs, RunCommand};
 use crate::stdlib::parser::Parser;
+use crate::stdlib::tool::FrozenTool;
 use crate::stdlib::variable::FrozenVariable;
 use anyhow::bail;
 use clap::Args;
@@ -73,6 +74,16 @@ fn format_optional_string(v: Option<String>) -> String {
     )
 }
 
+fn format_bool(v: bool) -> String {
+    format!(
+        "{}",
+        match v {
+            true => Green.paint("True"),
+            false => Red.paint("False"),
+        }
+    )
+}
+
 fn print_variable(var: &FrozenVariable) {
     println!("{}: ", Cyan.paint(var.name.clone()));
 
@@ -111,9 +122,33 @@ fn print_variable(var: &FrozenVariable) {
     println!("");
 }
 
+fn print_tool(tool: &FrozenTool) {
+    println!("{}: ", Cyan.paint(tool.name.clone()));
+
+    let records = vec![
+        AlignedRecord::new("is builtin", format_bool(tool.builtin)),
+        AlignedRecord::new("path", format_optional_string(tool.path.clone())),
+        AlignedRecord::new(
+            "cmd",
+            format_optional_string(tool.cmd.clone().map(|c| format!("{}", c.display()))),
+        ),
+    ];
+    let mut max = 0;
+    for r in &records {
+        max = cmp::max(max, r.size);
+    }
+
+    for record in &records {
+        println!("  - {}", record.display_with_size(max));
+    }
+
+    println!("");
+}
+
 impl RunCommand for DescribeArgs {
     fn run(&self, _global_args: &GlobalArgs) -> anyhow::Result<()> {
         if self.workflow.exists() {
+            let column_width = 80;
             println!("Parsing workflow at {:?}", self.workflow);
 
             let parser = Parser::new();
@@ -121,11 +156,20 @@ impl RunCommand for DescribeArgs {
             let mut eval: Evaluator = Evaluator::new(&module);
 
             parser.parse_workflow_file(self.workflow.clone(), &mut eval)?;
-            parser.ctx.realize_variables(&self.workflow_args);
+            parser
+                .ctx
+                .update_from_environment(&self.workflow_args, &self.workflow);
 
-            print_header("Variables", 80);
-            for v in parser.ctx.snapshot_variables() {
+            let snapshot = parser.ctx.snapshot();
+
+            print_header("Variables", column_width);
+            for v in snapshot.variables {
                 print_variable(&v);
+            }
+
+            print_header("Tools", column_width);
+            for t in snapshot.tools {
+                print_tool(&t);
             }
         } else {
             bail!("Workflow does not exist at path {:?}", self.workflow);

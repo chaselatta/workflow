@@ -18,3 +18,12 @@ variable(
 variable(
   name =  "var_3",
 )
+
+builtin_tool(
+  name = "echo",
+)
+
+tool(
+  name = "foo",
+  path = "foo.sh",
+)

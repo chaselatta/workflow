@@ -1,9 +1,12 @@
+use crate::stdlib::tool::{FrozenTool, Tool};
 use crate::stdlib::variable::{FrozenVariable, Variable};
 use anyhow::{anyhow, bail};
 use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,6 +15,10 @@ pub enum ParseContextError {
     VariableAlreadyExists(String),
     #[error("Variable(name = '{0}') does not exists in this context")]
     UnknownVariable(String),
+    #[error("Tool(name = '{0}') already exists in this context")]
+    ToolAlreadyExists(String),
+    #[error("Tool(name = '{0}') does not exists in this context")]
+    UnknownTool(String),
     #[error("Missing ParseContext from evaluator")]
     MissingParseContext,
 }
@@ -19,6 +26,12 @@ pub enum ParseContextError {
 #[derive(Debug, ProvidesStaticType, Default, PartialEq)]
 pub struct ParseContext {
     vars: RefCell<HashMap<String, Variable>>,
+    tools: RefCell<HashMap<String, Tool>>,
+}
+
+pub struct ParseContextSnapshot {
+    pub variables: Vec<FrozenVariable>,
+    pub tools: Vec<FrozenTool>,
 }
 
 impl ParseContext {
@@ -28,6 +41,69 @@ impl ParseContext {
         }
         bail!(ParseContextError::MissingParseContext);
     }
+
+    pub fn snapshot(&self) -> ParseContextSnapshot {
+        ParseContextSnapshot {
+            variables: self
+                .vars
+                .borrow()
+                .values()
+                .map(|v| FrozenVariable::from(v))
+                .collect(),
+            tools: self
+                .tools
+                .borrow()
+                .values()
+                .map(|v| FrozenTool::from(v))
+                .collect(),
+        }
+    }
+
+    /// Updates the context based on the environment.
+    ///
+    /// Updates the variables in the ctx based on the command line flags and
+    /// environment variables.
+    /// workflow_args is a list of strings that follows the form of
+    /// ["--foo", "a", "--bar", "b"] where the value follows the flag.
+    pub fn update_from_environment(&self, workflow_args: &Vec<String>, workflow_path: &PathBuf) {
+        let snapshot = self.snapshot();
+
+        // TODO : workflow_path includes the filename, need to pop that
+        // also, maybe don't canonicalize here? but assert aabsolute path?
+        //TODO: workflow_path should be stored on the ctx.
+        if let Ok(workflow_path) = fs::canonicalize(workflow_path) {
+            let mut c = workflow_path.clone();
+            c.pop();
+            self.validate_tool_paths(&snapshot.tools, &c);
+        }
+        self.realize_variables(&snapshot.variables, workflow_args);
+    }
+
+    fn realize_variables(&self, variables: &Vec<FrozenVariable>, workflow_args: &Vec<String>) {
+        for frozen_var in variables {
+            let _ = self.with_variable_mut(&frozen_var.name, |v| {
+                // First, check to see if there is a command line flag that matches
+                if v.try_update_value_from_cli_flag(workflow_args).is_ok() {
+                    return Ok(());
+                }
+                // Next,  try to set the value from theenv
+                if v.try_update_value_from_env().is_ok() {
+                    return Ok(());
+                }
+                // Nothing to update, fall back to the default
+                Ok(())
+            });
+        }
+    }
+
+    fn validate_tool_paths(&self, tools: &Vec<FrozenTool>, workflow_path: &PathBuf) {
+        for tool in tools {
+            let _ =
+                self.with_tool_mut(&tool.name, |t| Ok(t.update_command_for_tool(workflow_path)));
+        }
+    }
+
+    // - Variables
 
     pub fn with_variable<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
     where
@@ -62,36 +138,36 @@ impl ParseContext {
         }
     }
 
-    /// Returns a Vec of FrozenVariable objects which represent the
-    /// variables at the time of calling. The variables cannot be
-    /// updated and should not be held at a later time.
-    pub fn snapshot_variables(&self) -> Vec<FrozenVariable> {
-        self.vars
-            .borrow()
-            .values()
-            .map(|v| FrozenVariable::from(v))
-            .collect()
+    // - Tools
+    pub fn add_tool(&self, tool: Tool) -> anyhow::Result<()> {
+        match self.tools.borrow_mut().insert(tool.name(), tool) {
+            None => Ok(()),
+            Some(var) => Err(anyhow!(ParseContextError::ToolAlreadyExists(var.name()))),
+        }
     }
 
-    /// Updates the variables in the ctx based on the command line flags and
-    /// environment variables.
-    /// workflow_args is a list of strings that follows the form of
-    /// ["--foo", "a", "--bar", "b"] where the value follows the flag.
-    pub fn realize_variables(&self, workflow_args: &Vec<String>) {
-        let variables = self.snapshot_variables();
-        for frozen_var in variables {
-            let _ = self.with_variable_mut(&frozen_var.name, |v| {
-                // First, check to see if there is a command line flag that matches
-                if v.try_update_value_from_cli_flag(workflow_args).is_ok() {
-                    return Ok(());
-                }
-                // Next,  try to set the value from theenv
-                if v.try_update_value_from_env().is_ok() {
-                    return Ok(());
-                }
-                // Nothing to update, fall back to the default
-                Ok(())
-            });
+    // pub fn with_tool<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    // where
+    //     F: FnOnce(&Tool) -> anyhow::Result<T>,
+    // {
+    //     let tools = self.tools.borrow();
+    //     if let Some(tool) = tools.get(name) {
+    //         f(tool)
+    //     } else {
+    //         bail!(ParseContextError::UnknownTool(name.to_string()))
+    //     }
+    // }
+
+    //TODO: test
+    pub fn with_tool_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(&mut Tool) -> anyhow::Result<T>,
+    {
+        let mut tools = self.tools.borrow_mut();
+        if let Some(tool) = tools.get_mut(name) {
+            f(tool)
+        } else {
+            bail!(ParseContextError::UnknownTool(name.to_string()))
         }
     }
 }
@@ -127,28 +203,26 @@ mod tests {
     #[test]
     fn test_add_variable_success() {
         let ctx = ParseContext::default();
-        let var = Variable::new("foo");
-
-        assert!(ctx.add_variable(var).is_ok());
+        assert!(ctx
+            .add_variable(Variable::for_test("foo", None, None, None))
+            .is_ok());
     }
 
     #[test]
     #[should_panic]
     fn test_add_variable_twice_fails() {
         let ctx = ParseContext::default();
-        let var1 = Variable::new("foo");
-        let var2 = Variable::new("foo");
-
-        ctx.add_variable(var1).unwrap();
+        ctx.add_variable(Variable::for_test("foo", None, None, None))
+            .unwrap();
         // Fail here
-        ctx.add_variable(var2).unwrap();
+        ctx.add_variable(Variable::for_test("foo", None, None, None))
+            .unwrap();
     }
 
     #[test]
     fn test_with_variable_success() {
         let ctx = ParseContext::default();
-        let var = Variable::new("foo");
-        let _ = ctx.add_variable(var);
+        let _ = ctx.add_variable(Variable::for_test("foo", None, None, None));
 
         let _ = ctx.with_variable("foo", |v| {
             assert_eq!(&v.name(), "foo");
@@ -171,21 +245,9 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_count() {
-        let ctx = ParseContext::default();
-        let var1 = Variable::new("foo");
-        let var2 = Variable::new("bar");
-        let _ = ctx.add_variable(var1);
-        let _ = ctx.add_variable(var2);
-
-        assert_eq!(ctx.snapshot_variables().len(), 2);
-    }
-
-    #[test]
     fn test_with_variable_mutable_success() {
         let ctx = ParseContext::default();
-        let var = Variable::new("foo");
-        let _ = ctx.add_variable(var);
+        let _ = ctx.add_variable(Variable::for_test("foo", None, None, None));
 
         let _ = ctx.with_variable_mut("foo", |v| {
             v.write_value("new", "test_writer")?;
@@ -197,19 +259,6 @@ mod tests {
                 .unwrap(),
             "new".to_string()
         );
-    }
-
-    #[test]
-    fn test_frozen_variables() {
-        let ctx = ParseContext::default();
-        let var1 = Variable::new("foo");
-        let var2 = Variable::new("bar");
-        let _ = ctx.add_variable(var1);
-        let _ = ctx.add_variable(var2);
-
-        let frozen = ctx.snapshot_variables();
-
-        assert_eq!(frozen.len(), 2);
     }
 
     #[test]
@@ -230,7 +279,7 @@ mod tests {
             "".to_string()
         );
 
-        ctx.realize_variables(&vec![]);
+        ctx.realize_variables(&ctx.snapshot().variables, &vec![]);
         assert_eq!(
             ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
                 .unwrap(),
@@ -255,12 +304,15 @@ mod tests {
             "".to_string()
         );
 
-        ctx.realize_variables(&vec![
-            "--bar".to_string(),
-            "a".to_string(),
-            "--foo".to_string(),
-            "b".to_string(),
-        ]);
+        ctx.realize_variables(
+            &ctx.snapshot().variables,
+            &vec![
+                "--bar".to_string(),
+                "a".to_string(),
+                "--foo".to_string(),
+                "b".to_string(),
+            ],
+        );
         assert_eq!(
             ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
                 .unwrap(),
@@ -289,16 +341,47 @@ mod tests {
             "".to_string()
         );
 
-        ctx.realize_variables(&vec![
-            "--bar".to_string(),
-            "a".to_string(),
-            "--foo".to_string(),
-            "b".to_string(),
-        ]);
+        ctx.realize_variables(
+            &ctx.snapshot().variables,
+            &vec![
+                "--bar".to_string(),
+                "a".to_string(),
+                "--foo".to_string(),
+                "b".to_string(),
+            ],
+        );
         assert_eq!(
             ctx.with_variable("foo", |v| { Ok(v.read_value("reader")?) })
                 .unwrap(),
             "b".to_string(),
         );
+    }
+
+    // - Tool Tests
+    #[test]
+    #[should_panic(expected = "Tool(name = 'foo') already exists in this context")]
+    fn test_add_tool_twice_fails() {
+        let ctx = ParseContext::default();
+        ctx.add_tool(Tool::for_test("foo")).unwrap();
+        // Fail here
+        ctx.add_tool(Tool::for_test("foo")).unwrap();
+    }
+
+    // - Snapshot
+    #[test]
+    fn test_snapshot() {
+        let ctx = ParseContext::default();
+
+        // variables
+        let _ = ctx.add_variable(Variable::for_test("foo", None, None, None));
+        let _ = ctx.add_variable(Variable::for_test("bar", None, None, None));
+
+        // tools
+        let _ = ctx.add_tool(Tool::for_test("foo")).unwrap();
+        let _ = ctx.add_tool(Tool::for_test("bar")).unwrap();
+
+        let snapshot = ctx.snapshot();
+        assert_eq!(snapshot.variables.len(), 2);
+        assert_eq!(snapshot.tools.len(), 2);
     }
 }

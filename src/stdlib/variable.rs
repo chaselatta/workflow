@@ -1,4 +1,5 @@
 use crate::stdlib::parser::parse_context::ParseContext;
+use crate::stdlib::{validate_name, StdlibError};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
@@ -11,13 +12,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum VariableError {
-    #[error("Invalid attribute Variable::{attr}, {reason} got {value:?})")]
-    InvalidAttribute {
-        attr: String,
-        value: String,
-        reason: String,
-    },
-
     #[error("'{reader}' not in allowed scopes to read var '{name}'")]
     ReadNotAllowed { reader: String, name: String },
 
@@ -26,16 +20,6 @@ pub enum VariableError {
 
     #[error("No value set for '{0}'")]
     NoDefaultValueSet(String),
-}
-
-impl VariableError {
-    fn new_invalid_attr<T: Into<String>>(attr: &str, reason: &str, value: T) -> Self {
-        VariableError::InvalidAttribute {
-            attr: attr.to_string(),
-            reason: reason.to_string(),
-            value: value.into(),
-        }
-    }
 }
 
 #[starlark_module]
@@ -131,35 +115,13 @@ pub struct Variable {
     value_ctx: Option<ValueContext>,
 }
 
-fn validate_name(name: &str) -> anyhow::Result<String> {
-    if name.is_empty() {
-        bail!(VariableError::new_invalid_attr(
-            "name",
-            "cannot be empty",
-            name
-        ));
-    }
-    if name.contains(" ") {
-        bail!(VariableError::new_invalid_attr(
-            "name",
-            "cannot contain spaces",
-            name
-        ));
-    }
-    Ok(name.to_string())
-}
-
 fn validate_env(env: Option<&str>) -> anyhow::Result<Option<String>> {
     if let Some(env) = env {
         if env.is_empty() {
-            bail!(VariableError::new_invalid_attr(
-                "env",
-                "cannot be empty",
-                env
-            ));
+            bail!(StdlibError::new_invalid_attr("env", "cannot be empty", env));
         }
         if env.contains(" ") {
-            bail!(VariableError::new_invalid_attr(
+            bail!(StdlibError::new_invalid_attr(
                 "env",
                 "cannot contain spaces",
                 env
@@ -173,7 +135,7 @@ fn validate_env(env: Option<&str>) -> anyhow::Result<Option<String>> {
 fn validate_cli_flag(cli_flag: Option<&str>) -> anyhow::Result<Option<String>> {
     if let Some(flag) = cli_flag {
         if flag.is_empty() {
-            bail!(VariableError::new_invalid_attr(
+            bail!(StdlibError::new_invalid_attr(
                 "cli_flag",
                 "cannot be empty",
                 flag
@@ -181,7 +143,7 @@ fn validate_cli_flag(cli_flag: Option<&str>) -> anyhow::Result<Option<String>> {
         }
 
         if flag.contains(" ") {
-            bail!(VariableError::new_invalid_attr(
+            bail!(StdlibError::new_invalid_attr(
                 "cli_flag",
                 "cannot contain spaces",
                 flag
@@ -189,14 +151,14 @@ fn validate_cli_flag(cli_flag: Option<&str>) -> anyhow::Result<Option<String>> {
         }
 
         if flag.len() == 2 && (!flag.starts_with("-") || flag == "--") {
-            bail!(VariableError::new_invalid_attr(
+            bail!(StdlibError::new_invalid_attr(
                 "cli_flag",
                 "short flags must take the form -v",
                 flag
             ));
         }
         if flag.len() > 2 && !flag.starts_with("--") {
-            bail!(VariableError::new_invalid_attr(
+            bail!(StdlibError::new_invalid_attr(
                 "cli_flag",
                 "long flags must take the form --value",
                 flag
@@ -211,7 +173,7 @@ fn validate_scope(scopes: Option<Vec<String>>) -> anyhow::Result<VariableScope> 
     if let Some(scopes) = scopes {
         for scope in &scopes {
             if scope.is_empty() {
-                bail!(VariableError::new_invalid_attr(
+                bail!(StdlibError::new_invalid_attr(
                     "scope",
                     "scopes cannot contain empty strings",
                     scope
@@ -219,7 +181,7 @@ fn validate_scope(scopes: Option<Vec<String>>) -> anyhow::Result<VariableScope> 
             }
 
             if scope.contains(" ") {
-                bail!(VariableError::new_invalid_attr(
+                bail!(StdlibError::new_invalid_attr(
                     "scope",
                     "scopes cannot contain spaces",
                     scope
@@ -240,13 +202,6 @@ fn access_allowed<T: Into<String>>(scope: &VariableScope, entry: T) -> bool {
 }
 
 impl Variable {
-    pub fn new(name: &str) -> Self {
-        Variable {
-            name: name.to_string(),
-            ..Variable::default()
-        }
-    }
-
     #[cfg(test)]
     pub fn for_test(
         name: &str,
@@ -450,26 +405,6 @@ mod tests {
         assert_eq!(access_allowed(&restricted, "b"), true);
         assert_eq!(access_allowed(&restricted, "b".to_string()), true);
         assert_eq!(access_allowed(&restricted, "c"), false);
-    }
-
-    // --- name
-
-    #[test]
-    fn validate_name_success() {
-        assert_eq!(validate_name("foo").unwrap(), "foo".to_string());
-        assert_eq!(validate_name("1").unwrap(), "1".to_string());
-    }
-
-    #[test]
-    #[should_panic]
-    fn validate_name_fail_empty() {
-        validate_name("").unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn validate_name_fail_spaces() {
-        validate_name("a b").unwrap();
     }
 
     // --- env
@@ -774,7 +709,7 @@ variable(
             AstModule::parse("test.star", starlark_code.to_owned(), &Dialect::Standard).unwrap();
         let _res = eval.eval_module(ast, &globals).unwrap();
 
-        assert_eq!(ctx.snapshot_variables().len(), 2);
+        assert_eq!(ctx.snapshot().variables.len(), 2);
     }
 
     #[test]
@@ -825,7 +760,6 @@ variable(
             readers: VariableScope::from_str_list(&["a", "b"]),
             writers: VariableScope::from_str_list(&["c", "d"]),
             value_ctx: Some(ValueContext::new("default", ValueUpdatedBy::ForTest)),
-            ..Variable::default()
         };
         let frozen = FrozenVariable::from(&var);
         assert_eq!(frozen.name, var.name);
