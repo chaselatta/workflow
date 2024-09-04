@@ -1,10 +1,10 @@
 pub mod parse_context;
 
 use crate::stdlib::parser::parse_context::ParseContext;
+use crate::stdlib::tool::{starlark_builtin_tool, starlark_tool};
 use crate::stdlib::variable::starlark_variable;
 
-use starlark::environment::Globals;
-use starlark::environment::GlobalsBuilder;
+use starlark::environment::{Globals, GlobalsBuilder};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
 use std::path::PathBuf;
@@ -15,7 +15,11 @@ pub struct Parser {
 }
 
 fn globals() -> Globals {
-    GlobalsBuilder::new().with(starlark_variable).build()
+    GlobalsBuilder::standard()
+        .with(starlark_variable)
+        .with(starlark_builtin_tool)
+        .with(starlark_tool)
+        .build()
 }
 
 impl Parser {
@@ -87,7 +91,7 @@ def foo():
             .parse_content("foo.star", content.to_owned(), &mut eval)
             .unwrap();
 
-        assert_eq!(parser.ctx.snapshot_variables().len(), 1);
+        assert_eq!(parser.ctx.snapshot().variables.len(), 1);
     }
 
     #[test]
@@ -101,6 +105,6 @@ def foo():
 
         parser.parse_workflow_file(file, &mut eval).unwrap();
 
-        assert_eq!(parser.ctx.snapshot_variables().len(), 3);
+        assert_eq!(parser.ctx.snapshot().variables.len(), 3);
     }
 }

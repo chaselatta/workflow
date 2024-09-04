@@ -73,3 +73,47 @@ none of the exit codes are in the map.
 * variable_modifier_from_json(variable, path, default). The variable is the name of
 the variable to update, the path is a period delimited path into the json result and
 the default is what will be used if the path is not present.
+
+## Tool
+A tool is specified with the `tool` or `builtin_tool` rules. A tool must be
+defined before it can be used from an action.
+
+To declare a tool that is globally available use the `builtin_tool` rule. The
+name of the tool will be the same as the name you would use on the command line.
+```
+builtin_tool(
+  name = "echo",
+)
+```
+
+For a tool that is specified on a path do the following:
+
+```
+tool(
+  name = "my-tool",
+  path = "some/path/my-tool"
+)
+```
+
+If a path is relative, the path should be specified relative to the
+workflow file. Paths can take part in variable interpolation so the
+following is valid.
+
+```
+tool(
+  name = "my-tool",
+  path = "{build-dir}/path/my-tool",
+)
+```
+
+### Running workflows before tool instantiation. (Not implemented)
+Tools can optionally declare a workflow to run before they are
+validated. This can allow a user to run a series of actions to build
+a tool, set variables or download a tool
+```
+tool(
+  name = "my-tool",
+  path = "{build-dir}/path/my-tool",
+  setup = "my-tool-setup-workflow",
+)
+```
