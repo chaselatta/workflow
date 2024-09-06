@@ -7,6 +7,7 @@ use crate::stdlib::variable::starlark_variable;
 use starlark::environment::{Globals, GlobalsBuilder};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
+use std::fs;
 use std::path::PathBuf;
 
 pub struct Parser {
@@ -22,44 +23,33 @@ fn globals() -> Globals {
         .build()
 }
 
-impl Parser {
-    pub fn new() -> Self {
-        let globals = globals();
-        let ctx = ParseContext::default();
+fn try_starlark<T>(r: Result<T, starlark::Error>) -> anyhow::Result<T> {
+    match r {
+        Ok(v) => Ok(v),
+        Err(e) => Err(e.into_anyhow()),
+    }
+}
 
-        return Parser {
+impl Parser {
+    pub fn new(workflow_file: PathBuf) -> anyhow::Result<Self> {
+        let globals = globals();
+        let ctx = ParseContext::new(fs::canonicalize(workflow_file)?);
+
+        return Ok(Parser {
             globals: globals,
             ctx: ctx,
-        };
+        });
     }
 
-    pub fn parse_content<'a>(
-        &'a self,
-        filename: &str,
-        content: String,
-        eval: &mut Evaluator<'a, 'a>,
-    ) -> anyhow::Result<()> {
+    pub fn parse_workflow<'a>(&'a self, eval: &mut Evaluator<'a, 'a>) -> anyhow::Result<()> {
         eval.extra = Some(&self.ctx);
-        // TODO: fix unwrap
-        let ast: AstModule = AstModule::parse(filename, content, &Dialect::Standard).unwrap();
 
-        // TODO: fix unwrap
-        let _ = eval.eval_module(ast, &self.globals).unwrap();
-        Ok(())
-    }
+        let ast = try_starlark(AstModule::parse_file(
+            self.ctx.workflow_file(),
+            &Dialect::Standard,
+        ))?;
+        try_starlark(eval.eval_module(ast, &self.globals))?;
 
-    pub fn parse_workflow_file<'a>(
-        &'a self,
-        file: PathBuf,
-        eval: &mut Evaluator<'a, 'a>,
-    ) -> anyhow::Result<()> {
-        eval.extra = Some(&self.ctx);
-        //TODO: check filename ends with .workflow
-        // TODO: fix unwrap
-        let ast: AstModule = AstModule::parse_file(&file, &Dialect::Standard).unwrap();
-
-        // TODO: fix unwrap
-        let _ = eval.eval_module(ast, &self.globals).unwrap();
         Ok(())
     }
 }
@@ -70,41 +60,32 @@ mod tests {
     use starlark::environment::Module;
 
     #[test]
-    fn test_parser_new() {
-        let _ = Parser::new();
-    }
-
-    #[test]
-    fn test_parse_content() {
-        let content = r#"
-variable(
-  name = "foo"
-)
-def foo():
-  pass
-"#;
-        let parser = Parser::new();
-        let module: Module = Module::new();
-        let mut eval: Evaluator = Evaluator::new(&module);
-
-        parser
-            .parse_content("foo.star", content.to_owned(), &mut eval)
-            .unwrap();
-
-        assert_eq!(parser.ctx.snapshot().variables.len(), 1);
-    }
-
-    #[test]
     fn test_parse_file() {
-        let parser = Parser::new();
-        let module: Module = Module::new();
-        let mut eval: Evaluator = Evaluator::new(&module);
-
         let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         file.push("src/test_data/vars_only.workflow");
 
-        parser.parse_workflow_file(file, &mut eval).unwrap();
+        let parser = Parser::new(file).unwrap();
+        let module: Module = Module::new();
+        let mut eval: Evaluator = Evaluator::new(&module);
+
+        parser.parse_workflow(&mut eval).unwrap();
 
         assert_eq!(parser.ctx.snapshot().variables.len(), 3);
+        // assert_eq!(parser.workflow_file, file);
     }
+
+    // #[test]
+    // fn test_parser_create_fail() {
+    //     let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    //     file.push("src/test_data/vars_only.workflow");
+
+    //     let parser = Parser::new(file).unwrap();
+    //     let module: Module = Module::new();
+    //     let mut eval: Evaluator = Evaluator::new(&module);
+
+    //     parser.parse_workflow(&mut eval).unwrap();
+
+    //     assert_eq!(parser.ctx.snapshot().variables.len(), 3);
+    //     // assert_eq!(parser.workflow_file, file);
+    // }
 }
