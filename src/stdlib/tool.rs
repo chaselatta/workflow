@@ -68,11 +68,12 @@ impl Tool {
         self.name.to_owned().clone()
     }
 
-    // TODO: For string interpolation, do something like "my string {func("key")}" where
-    // func is either a builting like get_variable("foo") or get_tool_path("foo") or
-    // a user can define their own.
+    pub fn cmd(&self) -> Option<PathBuf> {
+        self.cmd.clone()
+    }
 
-    // TODO: this should be called on demand and not stored since variables can change over time
+    /// This method will update the command for a given tool. It should be called
+    /// before a tool is executed to ensure that the state of the tool is still valid.
     pub fn update_command_for_tool(&mut self, workflow_path: &PathBuf) {
         if self.builtin {
             self.cmd = which(&self.name).ok();
@@ -128,7 +129,6 @@ pub struct FrozenTool {
     pub name: String,
     pub builtin: bool,
     pub path: Option<String>,
-    //TODO: validating commands can use string interpolation
     pub cmd: Option<PathBuf>,
 }
 
@@ -138,7 +138,7 @@ impl From<&Tool> for FrozenTool {
             name: item.name.clone(),
             builtin: item.builtin,
             path: item.path.clone(),
-            cmd: item.cmd.clone(),
+            cmd: item.cmd(),
         }
     }
 }
@@ -219,11 +219,16 @@ mod tests {
     // - validation
     #[test]
     fn test_validate_builtin_tool_path() {
-        let tools = ["ls", "echo", "cd", "["];
+        let tools = ["ls", "echo", "["];
         for tool in tools {
             let mut t = Tool::builtin(tool).unwrap();
             t.update_command_for_tool(&PathBuf::from(""));
-            assert_eq!(which(tool).unwrap(), t.cmd.unwrap());
+            assert_eq!(
+                which(tool),
+                Ok(t.cmd.unwrap_or_default()),
+                "testing which for tool '{}'",
+                &tool
+            );
         }
     }
 

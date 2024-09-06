@@ -157,17 +157,17 @@ impl ParseContext {
         }
     }
 
-    // pub fn with_tool<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
-    // where
-    //     F: FnOnce(&Tool) -> anyhow::Result<T>,
-    // {
-    //     let tools = self.tools.borrow();
-    //     if let Some(tool) = tools.get(name) {
-    //         f(tool)
-    //     } else {
-    //         bail!(ParseContextError::UnknownTool(name.to_string()))
-    //     }
-    // }
+    pub fn with_tool<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(&Tool) -> anyhow::Result<T>,
+    {
+        let tools = self.tools.borrow();
+        if let Some(tool) = tools.get(name) {
+            f(tool)
+        } else {
+            bail!(ParseContextError::UnknownTool(name.to_string()))
+        }
+    }
 
     //TODO: test
     pub fn with_tool_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
@@ -369,6 +369,7 @@ mod tests {
     }
 
     // - Tool Tests
+
     #[test]
     #[should_panic(expected = "Tool(name = 'foo') already exists in this context")]
     fn test_add_tool_twice_fails() {
@@ -378,7 +379,47 @@ mod tests {
         ctx.add_tool(Tool::for_test("foo")).unwrap();
     }
 
+    #[test]
+    fn test_with_tool_success() {
+        let ctx = ParseContext::default();
+        let _ = ctx.add_tool(Tool::for_test("foo"));
+
+        let _ = ctx.with_tool("foo", |t| {
+            assert_eq!(&t.name(), "foo");
+            Ok(())
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Tool(name = 'foo') does not exists in this context")]
+    fn test_with_tool_fails_if_missing_tool() {
+        let ctx = ParseContext::default();
+        ctx.with_tool("foo", |_| Ok(())).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Tool(name = 'foo') does not exists in this context")]
+    fn test_with_tool_mut_fails_if_missing_variable() {
+        let ctx = ParseContext::default();
+        ctx.with_tool_mut("foo", |_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_with_tool_mutable_success() {
+        let ctx = ParseContext::default();
+        let _ = ctx.add_tool(Tool::for_test("ls"));
+
+        let _ = ctx.with_tool_mut("ls", |t| {
+            t.update_command_for_tool(&PathBuf::default());
+            Ok(())
+        });
+
+        let r = ctx.with_tool("ls", |t| Ok(t.cmd())).unwrap();
+        assert!(r.is_some());
+    }
+
     // - Snapshot
+
     #[test]
     fn test_snapshot() {
         let ctx = ParseContext::default();

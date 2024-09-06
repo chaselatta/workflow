@@ -74,18 +74,12 @@ mod tests {
         // assert_eq!(parser.workflow_file, file);
     }
 
-    // #[test]
-    // fn test_parser_create_fail() {
-    //     let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    //     file.push("src/test_data/vars_only.workflow");
+    #[test]
+    #[should_panic(expected = "No such file or directory")]
+    fn test_parser_create_fail() {
+        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        file.push("src/test_data/__no_file__.workflow");
 
-    //     let parser = Parser::new(file).unwrap();
-    //     let module: Module = Module::new();
-    //     let mut eval: Evaluator = Evaluator::new(&module);
-
-    //     parser.parse_workflow(&mut eval).unwrap();
-
-    //     assert_eq!(parser.ctx.snapshot().variables.len(), 3);
-    //     // assert_eq!(parser.workflow_file, file);
-    // }
+        Parser::new(file).unwrap();
+    }
 }
