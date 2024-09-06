@@ -5,7 +5,6 @@ use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -27,6 +26,7 @@ pub enum ParseContextError {
 pub struct ParseContext {
     vars: RefCell<HashMap<String, Variable>>,
     tools: RefCell<HashMap<String, Tool>>,
+    workflow_file: PathBuf,
 }
 
 pub struct ParseContextSnapshot {
@@ -35,6 +35,17 @@ pub struct ParseContextSnapshot {
 }
 
 impl ParseContext {
+    pub fn new(workflow_file: PathBuf) -> Self {
+        return ParseContext {
+            workflow_file: workflow_file,
+            ..ParseContext::default()
+        };
+    }
+
+    pub fn workflow_file(&self) -> &PathBuf {
+        &self.workflow_file
+    }
+
     pub fn from_evaluator<'a>(eval: &'a Evaluator) -> anyhow::Result<&'a ParseContext> {
         if let Some(extra) = eval.extra {
             return Ok(extra.downcast_ref::<ParseContext>().unwrap());
@@ -65,17 +76,17 @@ impl ParseContext {
     /// environment variables.
     /// workflow_args is a list of strings that follows the form of
     /// ["--foo", "a", "--bar", "b"] where the value follows the flag.
-    pub fn update_from_environment(&self, workflow_args: &Vec<String>, workflow_path: &PathBuf) {
+    pub fn update_from_environment(&self, workflow_args: &Vec<String>) {
         let snapshot = self.snapshot();
 
-        // TODO : workflow_path includes the filename, need to pop that
-        // also, maybe don't canonicalize here? but assert aabsolute path?
-        //TODO: workflow_path should be stored on the ctx.
-        if let Ok(workflow_path) = fs::canonicalize(workflow_path) {
-            let mut c = workflow_path.clone();
-            c.pop();
-            self.validate_tool_paths(&snapshot.tools, &c);
-        }
+        // workflow_file is the path to the workflow file but we want our paths to be
+        // relative to the directory that the file is in.
+        let mut workflow_path = self.workflow_file.clone();
+
+        // Pop removes the filename (/path/to/foo.workflow -> /path/to)
+        workflow_path.pop();
+        self.validate_tool_paths(&snapshot.tools, &workflow_path);
+
         self.realize_variables(&snapshot.variables, workflow_args);
     }
 

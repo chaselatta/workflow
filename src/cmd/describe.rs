@@ -151,14 +151,12 @@ impl RunCommand for DescribeArgs {
             let column_width = 80;
             println!("Parsing workflow at {:?}", self.workflow);
 
-            let parser = Parser::new();
+            let parser = Parser::new(self.workflow.clone())?;
             let module: Module = Module::new();
             let mut eval: Evaluator = Evaluator::new(&module);
 
-            parser.parse_workflow_file(self.workflow.clone(), &mut eval)?;
-            parser
-                .ctx
-                .update_from_environment(&self.workflow_args, &self.workflow);
+            parser.parse_workflow(&mut eval)?;
+            parser.ctx.update_from_environment(&self.workflow_args);
 
             let snapshot = parser.ctx.snapshot();
 

@@ -68,7 +68,7 @@ impl Tool {
         self.name.to_owned().clone()
     }
 
-    // TODO: For string interpolation, do something like "my string {func("key")}" where 
+    // TODO: For string interpolation, do something like "my string {func("key")}" where
     // func is either a builting like get_variable("foo") or get_tool_path("foo") or
     // a user can define their own.
 
