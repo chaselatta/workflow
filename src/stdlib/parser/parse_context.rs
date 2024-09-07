@@ -1,4 +1,4 @@
-use crate::stdlib::parser::Stringinterpolator;
+use crate::stdlib::parser::StringInterpolator;
 use crate::stdlib::tool::{FrozenTool, Tool};
 use crate::stdlib::variable::{FrozenVariable, Variable};
 use anyhow::{anyhow, bail};
@@ -81,6 +81,9 @@ impl ParseContext {
     pub fn update_from_environment(&self, workflow_args: &Vec<String>) {
         let snapshot = self.snapshot();
 
+        // We must realize the variables before anything else
+        self.realize_variables(&snapshot.variables, workflow_args);
+
         // workflow_file is the path to the workflow file but we want our paths to be
         // relative to the directory that the file is in.
         let mut workflow_path = self.workflow_file.clone();
@@ -88,8 +91,6 @@ impl ParseContext {
         // Pop removes the filename (/path/to/foo.workflow -> /path/to)
         workflow_path.pop();
         self.validate_tool_paths(&snapshot.tools, &workflow_path);
-
-        self.realize_variables(&snapshot.variables, workflow_args);
     }
 
     fn realize_variables(&self, variables: &Vec<FrozenVariable>, workflow_args: &Vec<String>) {
@@ -111,8 +112,9 @@ impl ParseContext {
 
     fn validate_tool_paths(&self, tools: &Vec<FrozenTool>, workflow_path: &PathBuf) {
         for tool in tools {
-            let _ =
-                self.with_tool_mut(&tool.name, |t| Ok(t.update_command_for_tool(workflow_path)));
+            let _ = self.with_tool_mut(&tool.name, |t| {
+                Ok(t.update_command_for_tool(workflow_path, self))
+            });
         }
     }
 
@@ -184,7 +186,7 @@ impl ParseContext {
     }
 }
 
-impl Stringinterpolator for ParseContext {
+impl StringInterpolator for ParseContext {
     fn interpolate(&self, s: &str, reader: &str) -> anyhow::Result<String> {
         let re = Regex::new(r"\{(?<func>\S+)\((?<arg>\S+)\)\}").unwrap();
 
@@ -444,7 +446,7 @@ mod tests {
         let _ = ctx.add_tool(Tool::for_test("ls"));
 
         let _ = ctx.with_tool_mut("ls", |t| {
-            t.update_command_for_tool(&PathBuf::default());
+            t.update_command_for_tool(&PathBuf::default(), &ctx);
             Ok(())
         });
 

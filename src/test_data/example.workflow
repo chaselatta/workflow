@@ -18,3 +18,22 @@ variable(
 variable(
   name =  "var_3",
 )
+
+builtin_tool(
+  name = "echo",
+)
+
+tool(
+  name = "foo",
+  path = "foo.sh",
+)
+
+variable(
+  name =  "HOME",
+  env =  "HOME",
+)
+
+tool(
+  name = "orchestral",
+  path = "{variable(HOME)}/bin/orchestral",
+)
