@@ -1,6 +1,8 @@
+use crate::stdlib::parser::Stringinterpolator;
 use crate::stdlib::tool::{FrozenTool, Tool};
 use crate::stdlib::variable::{FrozenVariable, Variable};
 use anyhow::{anyhow, bail};
+use regex::{Captures, Regex};
 use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
 use std::cell::RefCell;
@@ -169,7 +171,6 @@ impl ParseContext {
         }
     }
 
-    //TODO: test
     pub fn with_tool_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
     where
         F: FnOnce(&mut Tool) -> anyhow::Result<T>,
@@ -180,6 +181,39 @@ impl ParseContext {
         } else {
             bail!(ParseContextError::UnknownTool(name.to_string()))
         }
+    }
+}
+
+impl Stringinterpolator for ParseContext {
+    fn interpolate(&self, s: &str, reader: &str) -> anyhow::Result<String> {
+        let re = Regex::new(r"\{(?<func>\S+)\((?<arg>\S+)\)\}").unwrap();
+
+        // Collect all of the new values first. We do this so that we can return an error if needed which
+        // is not possible from inside the replace_all call. This leads to us iterating the regex twice
+        // so we should try to optimize in the future.
+        let mut func_results: HashMap<String, String> = HashMap::new();
+        for caps in re.captures_iter(s) {
+            if &caps["func"] == "variable" {
+                func_results.insert(
+                    caps[0].to_string(),
+                    self.with_variable(&caps["arg"], |v| Ok(v.read_value(reader)?))?,
+                );
+            } else {
+                bail!(
+                    "Unknown function '{}' in string interpolation",
+                    &caps["func"]
+                );
+            }
+        }
+
+        let result = re.replace_all(s, |caps: &Captures| {
+            format!(
+                "{}",
+                func_results.get(&caps[0]).unwrap_or(&caps[0].to_string())
+            )
+        });
+
+        return Ok(result.to_string());
     }
 }
 
@@ -435,5 +469,71 @@ mod tests {
         let snapshot = ctx.snapshot();
         assert_eq!(snapshot.variables.len(), 2);
         assert_eq!(snapshot.tools.len(), 2);
+    }
+
+    // - StringInterpolator
+
+    #[test]
+    fn test_interpolate_string_no_captures() {
+        let ctx = ParseContext::default();
+        assert_eq!(ctx.interpolate("", "").unwrap(), "".to_string());
+
+        assert_eq!(ctx.interpolate("hello", "").unwrap(), "hello".to_string());
+
+        assert_eq!(
+            ctx.interpolate("\"hello\"", "").unwrap(),
+            "\"hello\"".to_string()
+        );
+    }
+
+    #[test]
+    fn test_interpolate_string_for_variable() {
+        let ctx = ParseContext::default();
+        let _ = ctx.add_variable(Variable::for_test("foo", Some("foo-value"), None, None));
+        let _ = ctx.add_variable(Variable::for_test("bar", Some("bar-value"), None, None));
+
+        assert_eq!(
+            ctx.interpolate("foo = {variable(foo)}", "").unwrap(),
+            "foo = foo-value".to_string()
+        );
+
+        assert_eq!(
+            ctx.interpolate("{variable(bar)}, {variable(foo)}", "")
+                .unwrap(),
+            "bar-value, foo-value".to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown function '__not_a_function__' in string interpolation")]
+    fn test_interpolate_string_fail_unknown_function() {
+        let ctx = ParseContext::default();
+
+        ctx.interpolate("foo = {__not_a_function__(foo)}", "")
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "'A' not in allowed scopes to read var 'foo'")]
+    fn test_interpolate_string_fail_restricted() {
+        let ctx = ParseContext::default();
+        let _ = ctx.add_variable(Variable::for_test_restricted("foo", "B"));
+
+        ctx.interpolate("foo = {variable(foo)}", "A").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Variable(name = 'foo') does not exists in this context")]
+    fn test_interpolate_string_unknown_variable() {
+        let ctx = ParseContext::default();
+        ctx.interpolate("foo = {variable(foo)}", "").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "No value set for 'foo'")]
+    fn test_interpolate_string_variable_not_set() {
+        let ctx = ParseContext::default();
+        let _ = ctx.add_variable(Variable::for_test("foo", None, None, None));
+        ctx.interpolate("foo = {variable(foo)}", "").unwrap();
     }
 }

@@ -79,7 +79,6 @@ impl Tool {
             self.cmd = which(&self.name).ok();
         } else if let Some(path) = self.path.as_ref().map(PathBuf::from) {
             // path based so find out the full path
-            dbg!(&path);
             let full_path = {
                 if path.is_absolute() {
                     path.clone()
