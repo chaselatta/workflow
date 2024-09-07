@@ -67,7 +67,7 @@ impl ParseContext {
                 .tools
                 .borrow()
                 .values()
-                .map(|v| FrozenTool::from(v))
+                .map(|v| v.freeze(&self.workflow_dir(), self))
                 .collect(),
         }
     }
@@ -83,14 +83,16 @@ impl ParseContext {
 
         // We must realize the variables before anything else
         self.realize_variables(&snapshot.variables, workflow_args);
+    }
 
+    fn workflow_dir(&self) -> PathBuf {
         // workflow_file is the path to the workflow file but we want our paths to be
         // relative to the directory that the file is in.
         let mut workflow_path = self.workflow_file.clone();
 
         // Pop removes the filename (/path/to/foo.workflow -> /path/to)
         workflow_path.pop();
-        self.validate_tool_paths(&snapshot.tools, &workflow_path);
+        workflow_path
     }
 
     fn realize_variables(&self, variables: &Vec<FrozenVariable>, workflow_args: &Vec<String>) {
@@ -106,14 +108,6 @@ impl ParseContext {
                 }
                 // Nothing to update, fall back to the default
                 Ok(())
-            });
-        }
-    }
-
-    fn validate_tool_paths(&self, tools: &Vec<FrozenTool>, workflow_path: &PathBuf) {
-        for tool in tools {
-            let _ = self.with_tool_mut(&tool.name, |t| {
-                Ok(t.update_command_for_tool(workflow_path, self))
             });
         }
     }
@@ -167,18 +161,6 @@ impl ParseContext {
     {
         let tools = self.tools.borrow();
         if let Some(tool) = tools.get(name) {
-            f(tool)
-        } else {
-            bail!(ParseContextError::UnknownTool(name.to_string()))
-        }
-    }
-
-    pub fn with_tool_mut<F, T>(&self, name: &str, f: F) -> anyhow::Result<T>
-    where
-        F: FnOnce(&mut Tool) -> anyhow::Result<T>,
-    {
-        let mut tools = self.tools.borrow_mut();
-        if let Some(tool) = tools.get_mut(name) {
             f(tool)
         } else {
             bail!(ParseContextError::UnknownTool(name.to_string()))
@@ -431,27 +413,6 @@ mod tests {
     fn test_with_tool_fails_if_missing_tool() {
         let ctx = ParseContext::default();
         ctx.with_tool("foo", |_| Ok(())).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "Tool(name = 'foo') does not exists in this context")]
-    fn test_with_tool_mut_fails_if_missing_variable() {
-        let ctx = ParseContext::default();
-        ctx.with_tool_mut("foo", |_| Ok(())).unwrap();
-    }
-
-    #[test]
-    fn test_with_tool_mutable_success() {
-        let ctx = ParseContext::default();
-        let _ = ctx.add_tool(Tool::for_test("ls"));
-
-        let _ = ctx.with_tool_mut("ls", |t| {
-            t.update_command_for_tool(&PathBuf::default(), &ctx);
-            Ok(())
-        });
-
-        let r = ctx.with_tool("ls", |t| Ok(t.cmd())).unwrap();
-        assert!(r.is_some());
     }
 
     // - Snapshot
