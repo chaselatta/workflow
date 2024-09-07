@@ -218,6 +218,15 @@ impl Variable {
         }
     }
 
+    #[cfg(test)]
+    pub fn for_test_restricted(name: &str, restricted_to: &str) -> Self {
+        Variable {
+            name: name.to_string(),
+            readers: VariableScope::Restricted(vec![restricted_to.to_string()]),
+            ..Variable::default()
+        }
+    }
+
     pub fn name(&self) -> String {
         self.name.to_owned().clone()
     }

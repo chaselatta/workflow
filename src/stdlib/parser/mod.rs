@@ -54,6 +54,11 @@ impl Parser {
     }
 }
 
+pub trait Stringinterpolator {
+    /// Interpolate the given string for the given reader.
+    fn interpolate(&self, s: &str, reader: &str) -> anyhow::Result<String>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
