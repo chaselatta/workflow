@@ -71,6 +71,7 @@ impl StringInterpolator for NoStringInterp {
         Ok(s.to_string())
     }
 }
+pub const NO_STRING_INTERP: &NoStringInterp = &NoStringInterp {};
 
 #[cfg(test)]
 mod tests {

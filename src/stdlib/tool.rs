@@ -43,7 +43,6 @@ pub struct Tool {
     name: String,
     builtin: bool,
     path: Option<String>,
-    cmd: Option<PathBuf>,
 }
 
 impl Tool {
@@ -52,7 +51,6 @@ impl Tool {
             name: validate_name(name)?,
             builtin: true,
             path: None,
-            cmd: None,
         })
     }
 
@@ -61,7 +59,6 @@ impl Tool {
             name: validate_name(name)?,
             path: validate_path(path)?,
             builtin: false,
-            cmd: None,
         })
     }
 
@@ -69,20 +66,13 @@ impl Tool {
         self.name.to_owned().clone()
     }
 
-    pub fn cmd(&self) -> Option<PathBuf> {
-        self.cmd.clone()
-    }
-
-    /// This method will update the command for a given tool. It should be called
-    /// before a tool is executed to ensure that the state of the tool is still valid.
-    pub fn update_command_for_tool<T: StringInterpolator>(
-        &mut self,
+    pub fn cmd<T: StringInterpolator>(
+        &self,
         workflow_path: &PathBuf,
         interpolator: &T,
-    ) {
-
+    ) -> Option<PathBuf> {
         if self.builtin {
-            self.cmd = which(&self.name).ok();
+            return which(&self.name).ok();
         } else if let Some(path) = self
             .path
             .as_ref()
@@ -101,9 +91,22 @@ impl Tool {
                     new_path
                 }
             };
-            self.cmd = which(&full_path).ok();
+            return which(&full_path).ok();
         } else {
-            panic!("Expecting to find a path or builtin tool");
+            None
+        }
+    }
+
+    pub fn freeze<T: StringInterpolator>(
+        &self,
+        workflow_path: &PathBuf,
+        interpolator: &T,
+    ) -> FrozenTool {
+        FrozenTool {
+            name: self.name.clone(),
+            builtin: self.builtin,
+            path: self.path.clone(),
+            cmd: self.cmd(workflow_path, interpolator),
         }
     }
 
@@ -113,7 +116,6 @@ impl Tool {
             name: name.to_string(),
             path: None,
             builtin: true,
-            cmd: None,
         }
     }
 
@@ -123,7 +125,6 @@ impl Tool {
             name: name.to_string(),
             path: Some(path.to_string()),
             builtin: false,
-            cmd: None,
         }
     }
 }
@@ -154,21 +155,10 @@ pub struct FrozenTool {
     pub cmd: Option<PathBuf>,
 }
 
-impl From<&Tool> for FrozenTool {
-    fn from(item: &Tool) -> Self {
-        FrozenTool {
-            name: item.name.clone(),
-            builtin: item.builtin,
-            path: item.path.clone(),
-            cmd: item.cmd(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stdlib::parser::NoStringInterp;
+    use crate::stdlib::parser::NO_STRING_INTERP;
     use std::fs::{self, File};
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
@@ -182,7 +172,6 @@ mod tests {
                 name: "foo".to_string(),
                 path: None,
                 builtin: true,
-                cmd: None,
             }
         );
     }
@@ -201,7 +190,6 @@ mod tests {
                 name: "foo".to_string(),
                 path: Some("my/path".to_string()),
                 builtin: false,
-                cmd: None,
             }
         );
     }
@@ -227,16 +215,16 @@ mod tests {
     #[test]
     fn test_frozen_tool() {
         let tool = Tool {
-            name: "foo".to_string(),
+            name: "ls".to_string(),
             builtin: true,
             path: Some("foo".to_string()),
-            cmd: Some(PathBuf::from("foo")),
+            // cmd: Some(PathBuf::from("foo")),
         };
-        let frozen = FrozenTool::from(&tool);
+        let frozen = tool.freeze(&PathBuf::default(), NO_STRING_INTERP);
         assert_eq!(frozen.name, tool.name);
         assert_eq!(frozen.builtin, tool.builtin);
         assert_eq!(frozen.path, tool.path);
-        assert_eq!(frozen.cmd, tool.cmd);
+        assert_eq!(frozen.cmd, which("ls").ok());
     }
 
     // - validation
@@ -244,11 +232,11 @@ mod tests {
     fn test_validate_builtin_tool_path() {
         let tools = ["ls", "echo", "["];
         for tool in tools {
-            let mut t = Tool::builtin(tool).unwrap();
-            t.update_command_for_tool(&PathBuf::from(""), &NoStringInterp {});
+            let t = Tool::builtin(tool).unwrap();
             assert_eq!(
                 which(tool),
-                Ok(t.cmd.unwrap_or_default()),
+                Ok(t.cmd(&PathBuf::from(""), NO_STRING_INTERP)
+                    .unwrap_or_default()),
                 "testing which for tool '{}'",
                 &tool
             );
@@ -270,14 +258,16 @@ mod tests {
 
         // This mimics a user passing in an absolute path
         let absolute_tool_path = PathBuf::from(&tmp_file_path);
-        let mut tool = Tool::path_based(
+        let tool = Tool::path_based(
             "foo",
             &absolute_tool_path.into_os_string().into_string().unwrap(),
         )?;
 
-        // Update the tool, the workflow path does not matter here
-        tool.update_command_for_tool(&PathBuf::from("some-path"), &NoStringInterp {});
-        assert_eq!(PathBuf::from(&tmp_file_path), tool.cmd.unwrap());
+        // the workflow path does not matter here since it is an absolute path
+        assert_eq!(
+            Some(PathBuf::from(&tmp_file_path)),
+            tool.cmd(&PathBuf::default(), NO_STRING_INTERP)
+        );
 
         // Delete all the files
         drop(tmp_file);
@@ -305,13 +295,13 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let mut tool = Tool::path_based("foo", "foo/foo.sh")?;
-
-        // Update
-        tool.update_command_for_tool(&workflow_path, &NoStringInterp {});
+        let tool = Tool::path_based("foo", "foo/foo.sh")?;
 
         // Test
-        assert_eq!(tool_absolute_path, tool.cmd.unwrap());
+        assert_eq!(
+            Some(tool_absolute_path),
+            tool.cmd(&workflow_path, NO_STRING_INTERP)
+        );
 
         // Delete all the files
         drop(tmp_file);
@@ -325,20 +315,16 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let mut tool = Tool::path_based("foo", "foo.sh")?;
-
-        // Update
-        tool.update_command_for_tool(&workflow_path, &NoStringInterp {});
+        let tool = Tool::path_based("foo", "foo.sh")?;
 
         // Test
-        assert_eq!(tool.cmd, None);
+        assert_eq!(tool.cmd(&workflow_path, NO_STRING_INTERP), None);
 
         // Delete the temp dir
         tmp_dir.close()?;
         Ok(())
     }
 
-    //TODO: add test to work with an string interpolated path
     #[test]
     fn test_validate_path_based_with_string_interpolation() -> anyhow::Result<()> {
         // Create a temporary directory
@@ -359,15 +345,12 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let mut tool = Tool::path_based("foo", "{variable(p)}/foo.sh")?;
+        let tool = Tool::path_based("foo", "{variable(p)}/foo.sh")?;
 
-        // Create a parse context and add the variable
-
-        // Update
-        tool.update_command_for_tool(&workflow_path, &"foo/foo.sh");
-
-        // Test
-        assert_eq!(tool_absolute_path, tool.cmd.unwrap());
+        assert_eq!(
+            tool.cmd(&workflow_path, &"foo/foo.sh"),
+            Some(tool_absolute_path)
+        );
 
         // Delete all the files
         drop(tmp_file);
