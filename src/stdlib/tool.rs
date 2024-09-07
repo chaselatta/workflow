@@ -17,8 +17,8 @@ pub fn starlark_tool(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] path: &str,
         eval: &mut Evaluator,
     ) -> anyhow::Result<NoneType> {
-        let tool = Tool::path_based(name, path)?;
         let ctx = ParseContext::from_evaluator(eval)?;
+        let tool = Tool::path_based(name, path, ctx.workflow_dir())?;
         ctx.add_tool(tool)?;
         Ok(NoneType)
     }
@@ -40,9 +40,22 @@ pub fn starlark_builtin_tool(builder: &mut GlobalsBuilder) {
 /// A type representing a tool used in a workflow
 #[derive(Debug, PartialEq, Default)]
 pub struct Tool {
+    /// The name of the tool.
     name: String,
+
+    /// If this can be found on a user's path.
+    ///
+    /// If true, the name is used as the name of the tool.
     builtin: bool,
+
+    /// The path to the tool.
+    ///
+    /// If the string is relative then it should be relative to
+    /// root below.
     path: Option<String>,
+
+    /// If root which the path is relative to.
+    root: Option<PathBuf>,
 }
 
 impl Tool {
@@ -51,14 +64,16 @@ impl Tool {
             name: validate_name(name)?,
             builtin: true,
             path: None,
+            root: None,
         })
     }
 
-    fn path_based(name: &str, path: &str) -> anyhow::Result<Self> {
+    fn path_based(name: &str, path: &str, root: PathBuf) -> anyhow::Result<Self> {
         Ok(Tool {
             name: validate_name(name)?,
             path: validate_path(path)?,
             builtin: false,
+            root: Some(root),
         })
     }
 
@@ -66,11 +81,7 @@ impl Tool {
         self.name.to_owned().clone()
     }
 
-    pub fn cmd<T: StringInterpolator>(
-        &self,
-        workflow_path: &PathBuf,
-        interpolator: &T,
-    ) -> Option<PathBuf> {
+    pub fn cmd<T: StringInterpolator>(&self, interpolator: &T) -> Option<PathBuf> {
         if self.builtin {
             return which(&self.name).ok();
         } else if let Some(path) = self
@@ -86,7 +97,7 @@ impl Tool {
                 if path.is_absolute() {
                     path.clone()
                 } else {
-                    let mut new_path = workflow_path.clone();
+                    let mut new_path = self.root.clone()?;
                     new_path.push(path);
                     new_path
                 }
@@ -97,16 +108,12 @@ impl Tool {
         }
     }
 
-    pub fn freeze<T: StringInterpolator>(
-        &self,
-        workflow_path: &PathBuf,
-        interpolator: &T,
-    ) -> FrozenTool {
+    pub fn freeze<T: StringInterpolator>(&self, interpolator: &T) -> FrozenTool {
         FrozenTool {
             name: self.name.clone(),
             builtin: self.builtin,
             path: self.path.clone(),
-            cmd: self.cmd(workflow_path, interpolator),
+            cmd: self.cmd(interpolator),
         }
     }
 
@@ -116,15 +123,7 @@ impl Tool {
             name: name.to_string(),
             path: None,
             builtin: true,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn for_test_path_based(name: &str, path: &str) -> Self {
-        Tool {
-            name: name.to_string(),
-            path: Some(path.to_string()),
-            builtin: false,
+            root: None,
         }
     }
 }
@@ -172,6 +171,7 @@ mod tests {
                 name: "foo".to_string(),
                 path: None,
                 builtin: true,
+                root: None,
             }
         );
     }
@@ -185,11 +185,12 @@ mod tests {
     #[test]
     fn test_path_based_pass() {
         assert_eq!(
-            Tool::path_based("foo", "my/path").unwrap(),
+            Tool::path_based("foo", "my/path", PathBuf::default()).unwrap(),
             Tool {
                 name: "foo".to_string(),
                 path: Some("my/path".to_string()),
                 builtin: false,
+                root: Some(PathBuf::default()),
             }
         );
     }
@@ -197,19 +198,19 @@ mod tests {
     #[test]
     #[should_panic(expected = "Invalid attribute 'name', cannot be empty got \"\"")]
     fn test_path_based_fail_empty_name() {
-        Tool::path_based("", "path").unwrap();
+        Tool::path_based("", "path", PathBuf::default()).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Invalid attribute 'path', cannot be empty got \"\"")]
     fn test_path_based_fail_empty_path() {
-        Tool::path_based("foo", "").unwrap();
+        Tool::path_based("foo", "", PathBuf::default()).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "Invalid attribute 'path', cannot contain spaces got")]
     fn test_path_based_fail_spaces_in_path() {
-        Tool::path_based("foo", "my path").unwrap();
+        Tool::path_based("foo", "my path", PathBuf::default()).unwrap();
     }
 
     #[test]
@@ -218,9 +219,9 @@ mod tests {
             name: "ls".to_string(),
             builtin: true,
             path: Some("foo".to_string()),
-            // cmd: Some(PathBuf::from("foo")),
+            root: Some(PathBuf::default()),
         };
-        let frozen = tool.freeze(&PathBuf::default(), NO_STRING_INTERP);
+        let frozen = tool.freeze(NO_STRING_INTERP);
         assert_eq!(frozen.name, tool.name);
         assert_eq!(frozen.builtin, tool.builtin);
         assert_eq!(frozen.path, tool.path);
@@ -235,8 +236,7 @@ mod tests {
             let t = Tool::builtin(tool).unwrap();
             assert_eq!(
                 which(tool),
-                Ok(t.cmd(&PathBuf::from(""), NO_STRING_INTERP)
-                    .unwrap_or_default()),
+                Ok(t.cmd(NO_STRING_INTERP).unwrap_or_default()),
                 "testing which for tool '{}'",
                 &tool
             );
@@ -261,12 +261,13 @@ mod tests {
         let tool = Tool::path_based(
             "foo",
             &absolute_tool_path.into_os_string().into_string().unwrap(),
+            PathBuf::from(&tmp_dir.path()),
         )?;
 
         // the workflow path does not matter here since it is an absolute path
         assert_eq!(
             Some(PathBuf::from(&tmp_file_path)),
-            tool.cmd(&PathBuf::default(), NO_STRING_INTERP)
+            tool.cmd(NO_STRING_INTERP)
         );
 
         // Delete all the files
@@ -295,13 +296,10 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let tool = Tool::path_based("foo", "foo/foo.sh")?;
+        let tool = Tool::path_based("foo", "foo/foo.sh", workflow_path.clone())?;
 
         // Test
-        assert_eq!(
-            Some(tool_absolute_path),
-            tool.cmd(&workflow_path, NO_STRING_INTERP)
-        );
+        assert_eq!(Some(tool_absolute_path), tool.cmd(NO_STRING_INTERP));
 
         // Delete all the files
         drop(tmp_file);
@@ -315,10 +313,10 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let tool = Tool::path_based("foo", "foo.sh")?;
+        let tool = Tool::path_based("foo", "foo.sh", workflow_path.clone())?;
 
         // Test
-        assert_eq!(tool.cmd(&workflow_path, NO_STRING_INTERP), None);
+        assert_eq!(tool.cmd(NO_STRING_INTERP), None);
 
         // Delete the temp dir
         tmp_dir.close()?;
@@ -345,12 +343,9 @@ mod tests {
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
-        let tool = Tool::path_based("foo", "{variable(p)}/foo.sh")?;
+        let tool = Tool::path_based("foo", "{variable(p)}/foo.sh", workflow_path.clone())?;
 
-        assert_eq!(
-            tool.cmd(&workflow_path, &"foo/foo.sh"),
-            Some(tool_absolute_path)
-        );
+        assert_eq!(tool.cmd(&"foo/foo.sh"), Some(tool_absolute_path));
 
         // Delete all the files
         drop(tmp_file);

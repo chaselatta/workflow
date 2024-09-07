@@ -67,7 +67,7 @@ impl ParseContext {
                 .tools
                 .borrow()
                 .values()
-                .map(|v| v.freeze(&self.workflow_dir(), self))
+                .map(|v| v.freeze(self))
                 .collect(),
         }
     }
@@ -85,7 +85,7 @@ impl ParseContext {
         self.realize_variables(&snapshot.variables, workflow_args);
     }
 
-    fn workflow_dir(&self) -> PathBuf {
+    pub fn workflow_dir(&self) -> PathBuf {
         // workflow_file is the path to the workflow file but we want our paths to be
         // relative to the directory that the file is in.
         let mut workflow_path = self.workflow_file.clone();
