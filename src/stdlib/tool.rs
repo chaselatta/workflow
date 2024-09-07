@@ -1,4 +1,5 @@
 use crate::stdlib::parser::parse_context::ParseContext;
+use crate::stdlib::parser::StringInterpolator;
 use crate::stdlib::{validate_name, StdlibError};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
@@ -74,10 +75,22 @@ impl Tool {
 
     /// This method will update the command for a given tool. It should be called
     /// before a tool is executed to ensure that the state of the tool is still valid.
-    pub fn update_command_for_tool(&mut self, workflow_path: &PathBuf) {
+    pub fn update_command_for_tool<T: StringInterpolator>(
+        &mut self,
+        workflow_path: &PathBuf,
+        interpolator: &T,
+    ) {
+
         if self.builtin {
             self.cmd = which(&self.name).ok();
-        } else if let Some(path) = self.path.as_ref().map(PathBuf::from) {
+        } else if let Some(path) = self
+            .path
+            .as_ref()
+            .map(|s| interpolator.interpolate(s, &self.name))
+            .map(|v| v.ok())
+            .flatten()
+            .map(PathBuf::from)
+        {
             // path based so find out the full path
             let full_path = {
                 if path.is_absolute() {
@@ -100,6 +113,16 @@ impl Tool {
             name: name.to_string(),
             path: None,
             builtin: true,
+            cmd: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn for_test_path_based(name: &str, path: &str) -> Self {
+        Tool {
+            name: name.to_string(),
+            path: Some(path.to_string()),
+            builtin: false,
             cmd: None,
         }
     }
@@ -145,6 +168,7 @@ impl From<&Tool> for FrozenTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::parser::NoStringInterp;
     use std::fs::{self, File};
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
@@ -221,7 +245,7 @@ mod tests {
         let tools = ["ls", "echo", "["];
         for tool in tools {
             let mut t = Tool::builtin(tool).unwrap();
-            t.update_command_for_tool(&PathBuf::from(""));
+            t.update_command_for_tool(&PathBuf::from(""), &NoStringInterp {});
             assert_eq!(
                 which(tool),
                 Ok(t.cmd.unwrap_or_default()),
@@ -252,7 +276,7 @@ mod tests {
         )?;
 
         // Update the tool, the workflow path does not matter here
-        tool.update_command_for_tool(&PathBuf::from("some-path"));
+        tool.update_command_for_tool(&PathBuf::from("some-path"), &NoStringInterp {});
         assert_eq!(PathBuf::from(&tmp_file_path), tool.cmd.unwrap());
 
         // Delete all the files
@@ -284,7 +308,7 @@ mod tests {
         let mut tool = Tool::path_based("foo", "foo/foo.sh")?;
 
         // Update
-        tool.update_command_for_tool(&workflow_path);
+        tool.update_command_for_tool(&workflow_path, &NoStringInterp {});
 
         // Test
         assert_eq!(tool_absolute_path, tool.cmd.unwrap());
@@ -304,7 +328,7 @@ mod tests {
         let mut tool = Tool::path_based("foo", "foo.sh")?;
 
         // Update
-        tool.update_command_for_tool(&workflow_path);
+        tool.update_command_for_tool(&workflow_path, &NoStringInterp {});
 
         // Test
         assert_eq!(tool.cmd, None);
@@ -315,4 +339,39 @@ mod tests {
     }
 
     //TODO: add test to work with an string interpolated path
+    #[test]
+    fn test_validate_path_based_with_string_interpolation() -> anyhow::Result<()> {
+        // Create a temporary directory
+        let tmp_dir = TempDir::new("")?;
+        let mut tool_absolute_path = PathBuf::from(tmp_dir.path());
+
+        // create a directory in the temporary dir called foo
+        tool_absolute_path.push("foo");
+        fs::create_dir(&tool_absolute_path)?;
+
+        // Create a file in the nested temp dir that is executable
+        tool_absolute_path.push("foo.sh");
+        let mut tmp_file = File::create(&tool_absolute_path)?;
+        let mut perms = tmp_file.metadata()?.permissions();
+        perms.set_mode(0o755);
+        tmp_file.set_permissions(perms)?;
+        writeln!(tmp_file, "")?;
+
+        // This mimics a user writing a path relative to the workflow file
+        let workflow_path = PathBuf::from(tmp_dir.path());
+        let mut tool = Tool::path_based("foo", "{variable(p)}/foo.sh")?;
+
+        // Create a parse context and add the variable
+
+        // Update
+        tool.update_command_for_tool(&workflow_path, &"foo/foo.sh");
+
+        // Test
+        assert_eq!(tool_absolute_path, tool.cmd.unwrap());
+
+        // Delete all the files
+        drop(tmp_file);
+        tmp_dir.close()?;
+        Ok(())
+    }
 }

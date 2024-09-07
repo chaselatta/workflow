@@ -54,9 +54,22 @@ impl Parser {
     }
 }
 
-pub trait Stringinterpolator {
+pub trait StringInterpolator {
     /// Interpolate the given string for the given reader.
     fn interpolate(&self, s: &str, reader: &str) -> anyhow::Result<String>;
+}
+
+impl StringInterpolator for &str {
+    fn interpolate(&self, _s: &str, _reader: &str) -> anyhow::Result<String> {
+        Ok(self.to_string())
+    }
+}
+
+pub struct NoStringInterp {}
+impl StringInterpolator for NoStringInterp {
+    fn interpolate(&self, s: &str, _reader: &str) -> anyhow::Result<String> {
+        Ok(s.to_string())
+    }
 }
 
 #[cfg(test)]
