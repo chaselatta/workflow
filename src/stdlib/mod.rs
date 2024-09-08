@@ -1,6 +1,7 @@
 pub mod parser;
 pub mod tool;
 pub mod variable;
+pub mod variables;
 
 use anyhow::bail;
 use thiserror::Error;
