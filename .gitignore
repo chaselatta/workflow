@@ -15,3 +15,6 @@ Cargo.lock
 
 # VSCode files
 .vscode
+
+# macos
+.DS_Store

@@ -40,6 +40,10 @@ pub fn starlark_variable(builder: &mut GlobalsBuilder) {
     }
 }
 
+// variable() -> VariableRef which holds the identifier
+// variable() emits values to the parse context
+// parse_context holds a ValueStore which maps ids -> values
+
 /// A enum representing the scope of a variable.
 ///
 /// Variables are scoped to actions by their name.
@@ -570,7 +574,6 @@ mod tests {
     #[should_panic(
         expected = "Cannot update 'foo' from cli_flag: no cli_flag set for this variable"
     )]
-    // Cannot update '{}' from cli_flag: '{}' is not in args
     fn test_try_update_value_from_cli_flag_fail_not_set() {
         let mut var = Variable {
             name: "foo".to_string(),

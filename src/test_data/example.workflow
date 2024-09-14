@@ -1,4 +1,4 @@
-variable(
+var_1 = variable(
   name =  "var_1",
   default =  "some default",
   readers =  ["foo", "bar"],
@@ -7,7 +7,7 @@ variable(
   env =  "VAR_ONE",
 )
 
-variable(
+var_2 = variable(
   name =  "var_2",
   default =  "some default",
   readers =  ["foo", "bar"],
@@ -15,7 +15,7 @@ variable(
   env =  "VAR_TWO",
 )
 
-variable(
+var_3 = variable(
   name =  "var_3",
 )
 
@@ -28,7 +28,7 @@ tool(
   path = "foo.sh",
 )
 
-variable(
+HOME = variable(
   name =  "HOME",
   env =  "HOME",
 )

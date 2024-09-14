@@ -1,4 +1,7 @@
 pub mod format;
+pub mod variable;
+pub mod variable_store;
+
 use crate::stdlib::variables::format::ValueFormatter;
 use allocative::Allocative;
 use anyhow::bail;
