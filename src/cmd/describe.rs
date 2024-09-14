@@ -1,7 +1,7 @@
 use crate::cmd::{GlobalArgs, RunCommand};
+use crate::stdlib::legacy::tool::FrozenTool;
+use crate::stdlib::legacy::variable::FrozenVariable;
 use crate::stdlib::parser::Parser;
-use crate::stdlib::tool::FrozenTool;
-use crate::stdlib::variable::FrozenVariable;
 use anyhow::bail;
 use clap::Args;
 use std::cmp;

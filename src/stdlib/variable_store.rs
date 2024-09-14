@@ -1,4 +1,4 @@
-use crate::stdlib::variables::variable::VariableEntry;
+use crate::stdlib::variable::VariableEntry;
 use starlark::values::ProvidesStaticType;
 
 // variable() -> VariableRef which holds the identifier
