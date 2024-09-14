@@ -1,6 +1,7 @@
+use crate::stdlib::errors::StdlibError;
+use crate::stdlib::legacy::validate_name;
 use crate::stdlib::parser::parse_context::ParseContext;
 use crate::stdlib::parser::StringInterpolator;
-use crate::stdlib::{validate_name, StdlibError};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;

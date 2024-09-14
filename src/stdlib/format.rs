@@ -1,6 +1,6 @@
-use crate::stdlib::variables::variable::VariableRef;
-use crate::stdlib::variables::LateBoundString;
-use crate::stdlib::variables::VariableResolver;
+use crate::stdlib::variable::VariableRef;
+use crate::stdlib::variable_resolver::LateBoundString;
+use crate::stdlib::variable_resolver::VariableResolver;
 use allocative::Allocative;
 use starlark::starlark_simple_value;
 use starlark::values::starlark_value;

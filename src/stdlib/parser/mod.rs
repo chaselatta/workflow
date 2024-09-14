@@ -1,8 +1,8 @@
 pub mod parse_context;
 
+use crate::stdlib::legacy::tool::{starlark_builtin_tool, starlark_tool};
+use crate::stdlib::legacy::variable::starlark_variable;
 use crate::stdlib::parser::parse_context::ParseContext;
-use crate::stdlib::tool::{starlark_builtin_tool, starlark_tool};
-use crate::stdlib::variable::starlark_variable;
 
 use starlark::environment::{Globals, GlobalsBuilder};
 use starlark::eval::Evaluator;

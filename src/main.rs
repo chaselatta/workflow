@@ -1,5 +1,4 @@
 pub mod cmd;
-pub mod runner;
 pub mod stdlib;
 
 use crate::cmd::Cli;

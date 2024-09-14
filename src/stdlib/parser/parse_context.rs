@@ -1,7 +1,7 @@
+use crate::stdlib::legacy::tool::{FrozenTool, Tool};
+use crate::stdlib::legacy::variable::{FrozenVariable, Variable};
 use crate::stdlib::parser::StringInterpolator;
-use crate::stdlib::tool::{FrozenTool, Tool};
-use crate::stdlib::variable::{FrozenVariable, Variable};
-use crate::stdlib::variables::variable_store::VariableStore;
+use crate::stdlib::variable_store::VariableStore;
 use anyhow::{anyhow, bail};
 use regex::{Captures, Regex};
 use starlark::eval::Evaluator;
