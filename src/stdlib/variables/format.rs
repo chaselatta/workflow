@@ -1,8 +1,7 @@
+use crate::stdlib::variables::variable::VariableRef;
 use crate::stdlib::variables::LateBoundString;
 use crate::stdlib::variables::VariableResolver;
 use allocative::Allocative;
-use starlark::environment::GlobalsBuilder;
-use starlark::starlark_module;
 use starlark::starlark_simple_value;
 use starlark::values::starlark_value;
 use starlark::values::tuple::UnpackTuple;
@@ -12,25 +11,26 @@ use starlark::values::StarlarkValue;
 use starlark::values::Value;
 use std::fmt;
 
-#[starlark_module]
-pub fn starlark_format(builder: &mut GlobalsBuilder) {
-    fn format(
-        #[starlark(require = pos)] fmt_str: &str,
-        #[starlark(args)] args: UnpackTuple<Value>,
-    ) -> anyhow::Result<ValueFormatter> {
-        let mut values: Vec<LateBoundString> = vec![];
-        for a in args {
-            if let Some(formatter) = ValueFormatter::from_value(a) {
-                values.push(LateBoundString::with_value_formatter(formatter.clone()));
-            } else {
-                values.push(LateBoundString::with_value(a.to_str()));
-            }
+pub(crate) fn format_impl(
+    fmt_str: &str,
+    args: UnpackTuple<Value>,
+) -> anyhow::Result<ValueFormatter> {
+    let mut values: Vec<LateBoundString> = vec![];
+    for a in args {
+        if let Some(formatter) = ValueFormatter::from_value(a) {
+            values.push(LateBoundString::with_value_formatter(formatter.clone()));
+        } else if let Some(variable) = VariableRef::from_value(a) {
+            values.push(LateBoundString::with_identifier(
+                variable.identifier().to_string(),
+            ));
+        } else {
+            values.push(LateBoundString::with_value(a.to_str()));
         }
-        Ok(ValueFormatter {
-            fmt_str: fmt_str.to_string(),
-            values: values,
-        })
     }
+    Ok(ValueFormatter {
+        fmt_str: fmt_str.to_string(),
+        values: values,
+    })
 }
 
 #[derive(Debug, ProvidesStaticType, NoSerialize, Allocative, Clone)]
@@ -81,7 +81,8 @@ impl fmt::Display for ValueFormatter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use starlark::assert::Assert;
+    use crate::stdlib::test_utils::assert_env;
+    use std::collections::HashMap;
 
     struct TestResolver {}
     const NO_RESOLVE: TestResolver = TestResolver {};
@@ -89,12 +90,6 @@ mod tests {
         fn resolve(&self, _identifier: &str) -> anyhow::Result<String> {
             Ok("".to_string())
         }
-    }
-
-    fn assert_env<'a>() -> Assert<'a> {
-        let mut env = Assert::new();
-        env.globals_add(starlark_format);
-        env
     }
 
     #[test]
@@ -137,5 +132,24 @@ mod tests {
         let a = module.get("b").unwrap();
         let formatter = ValueFormatter::from_value(a.value()).unwrap();
         assert_eq!(formatter.fmt(&NO_RESOLVE).unwrap(), "a");
+    }
+
+    #[test]
+    fn test_format_with_variable() {
+        let mut resolver: HashMap<&str, &str> = HashMap::new();
+
+        let mut env = assert_env();
+        let module = env.module(
+            "format.star",
+            "v = variable(default = 'default'); a = format('{}', v)",
+        );
+        let v = module.get("v").unwrap();
+        let v = v.value();
+        let var_ref = VariableRef::from_value(v).unwrap();
+        resolver.insert(var_ref.identifier(), "default");
+
+        let a = module.get("a").unwrap();
+        let formatter = ValueFormatter::from_value(a.value()).unwrap();
+        assert_eq!(formatter.fmt(&resolver).unwrap(), "default");
     }
 }

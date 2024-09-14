@@ -1,6 +1,7 @@
 use crate::stdlib::parser::StringInterpolator;
 use crate::stdlib::tool::{FrozenTool, Tool};
 use crate::stdlib::variable::{FrozenVariable, Variable};
+use crate::stdlib::variables::variable_store::VariableStore;
 use anyhow::{anyhow, bail};
 use regex::{Captures, Regex};
 use starlark::eval::Evaluator;
@@ -29,6 +30,7 @@ pub struct ParseContext {
     vars: RefCell<HashMap<String, Variable>>,
     tools: RefCell<HashMap<String, Tool>>,
     workflow_file: PathBuf,
+    variable_store: VariableStore,
 }
 
 pub struct ParseContextSnapshot {
@@ -46,6 +48,10 @@ impl ParseContext {
 
     pub fn workflow_file(&self) -> &PathBuf {
         &self.workflow_file
+    }
+
+    pub fn variable_store(&self) -> &VariableStore {
+        &self.variable_store
     }
 
     pub fn from_evaluator<'a>(eval: &'a Evaluator) -> anyhow::Result<&'a ParseContext> {
