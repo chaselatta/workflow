@@ -8,6 +8,8 @@ pub enum StdlibError {
         value: String,
         reason: String,
     },
+    #[error("Expected to find a delegate but none found")]
+    MissingDelegate,
 }
 
 impl StdlibError {
