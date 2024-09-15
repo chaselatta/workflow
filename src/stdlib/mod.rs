@@ -1,10 +1,12 @@
 pub mod errors;
 pub mod format;
 pub mod legacy;
+pub mod parse_delegate;
 pub mod parser;
 pub mod variable;
 pub mod variable_resolver;
-pub mod variable_store;
+
+pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
