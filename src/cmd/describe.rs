@@ -1,15 +1,17 @@
 use crate::cmd::{GlobalArgs, RunCommand};
+use crate::downcast_delegate_ref;
+use crate::runner::{Runner, WorkflowDelegate};
 use crate::stdlib::legacy::tool::FrozenTool;
 use crate::stdlib::legacy::variable::FrozenVariable;
-use crate::stdlib::parser::Parser;
+use crate::stdlib::{VariableEntry, VariableRef};
+use ansi_term::Colour::{Cyan, Green, Red};
 use anyhow::bail;
 use clap::Args;
-use std::cmp;
-use std::path::PathBuf;
-
-use ansi_term::Colour::{Cyan, Green, Red};
 use starlark::environment::Module;
 use starlark::eval::Evaluator;
+use std::cmp;
+use std::ops::Deref;
+use std::path::PathBuf;
 
 #[derive(Args, Debug)]
 pub struct DescribeArgs {
@@ -84,27 +86,28 @@ fn format_bool(v: bool) -> String {
     )
 }
 
-fn print_variable(var: &FrozenVariable) {
-    println!("{}: ", Cyan.paint(var.name.clone()));
+fn print_variable_entry(name: &str, var: &VariableEntry) {
+    println!("{}: ", Cyan.paint(name.to_string()));
+    let value_ctx = var.value_ctx();
 
     let records = vec![
-        AlignedRecord::new("env", format_optional_string(var.env.clone())),
-        AlignedRecord::new("cli_flag", format_optional_string(var.cli_flag.clone())),
+        AlignedRecord::new("env", format_optional_string(var.env())),
+        AlignedRecord::new("cli_flag", format_optional_string(var.cli_flag())),
         AlignedRecord::new(
             "readers",
-            format!("{}", Green.paint(format!("{}", var.readers))),
+            format!("{}", Green.paint(format!("{}", var.readers()))),
         ),
         AlignedRecord::new(
             "writers",
-            format!("{}", Green.paint(format!("{}", var.writers))),
+            format!("{}", Green.paint(format!("{}", var.writers()))),
         ),
         AlignedRecord::new(
             "value",
-            format_optional_string(var.value.clone().map(|v| v.value)),
+            format_optional_string(value_ctx.clone().map(|v| v.value)),
         ),
         AlignedRecord::new(
             "context",
-            match &var.value {
+            match &value_ctx {
                 Some(v) => format!("{}", v.clone().updated_by),
                 None => "Value has never been set".to_string(),
             },
@@ -151,24 +154,36 @@ impl RunCommand for DescribeArgs {
             let column_width = 80;
             println!("Parsing workflow at {:?}", self.workflow);
 
-            let parser = Parser::new(self.workflow.clone())?;
+            // let parser = Parser::new(self.workflow.clone())?;
+            let runner = Runner::new(self.workflow.clone(), WorkflowDelegate::new())?;
             let module: Module = Module::new();
             let mut eval: Evaluator = Evaluator::new(&module);
 
-            parser.parse_workflow(&mut eval)?;
-            parser.ctx.update_from_environment(&self.workflow_args);
+            let _result = runner.parse_workflow(&mut eval).unwrap();
 
-            let snapshot = parser.ctx.snapshot();
+            let holder = runner.delegate();
+            let delegate = downcast_delegate_ref!(holder, WorkflowDelegate).unwrap();
 
+            //TODO: This is not very performant, We should iterate the globals once
+            // and then place them in their types.
             print_header("Variables", column_width);
-            for v in snapshot.variables {
-                print_variable(&v);
+            let names = module.names();
+            for name in names {
+                if let Some(value) = module.get(&name) {
+                    if let Some(entry) = VariableRef::from_value(value) {
+                        delegate
+                            .variable_store()
+                            .with_variable(entry.identifier(), |v| {
+                                print_variable_entry(&name, v);
+                            });
+                    }
+                }
             }
 
-            print_header("Tools", column_width);
-            for t in snapshot.tools {
-                print_tool(&t);
-            }
+            // print_header("Tools", column_width);
+            // for t in snapshot.tools {
+            //     print_tool(&t);
+            // }
         } else {
             bail!("Workflow does not exist at path {:?}", self.workflow);
         }

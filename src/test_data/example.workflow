@@ -1,5 +1,4 @@
 var_1 = variable(
-  name =  "var_1",
   default =  "some default",
   readers =  ["foo", "bar"],
   writers =  ["foo", "bar"],
@@ -8,7 +7,6 @@ var_1 = variable(
 )
 
 var_2 = variable(
-  name =  "var_2",
   default =  "some default",
   readers =  ["foo", "bar"],
   writers =  ["foo", "bar"],
@@ -16,24 +14,22 @@ var_2 = variable(
 )
 
 var_3 = variable(
-  name =  "var_3",
 )
 
-builtin_tool(
-  name = "echo",
-)
+#builtin_tool(
+#  name = "echo",
+#)
+# tool(
+#   name = "foo",
+#   path = "foo.sh",
+# )
 
-tool(
-  name = "foo",
-  path = "foo.sh",
-)
+# HOME = variable(
+#   name =  "HOME",
+#   env =  "HOME",
+# )
 
-HOME = variable(
-  name =  "HOME",
-  env =  "HOME",
-)
-
-tool(
-  name = "orchestral",
-  path = "{variable(HOME)}/bin/orchestral",
-)
+# tool(
+#   name = "orchestral",
+#   path = "{variable(HOME)}/bin/orchestral",
+# )

@@ -7,12 +7,11 @@ pub mod variable;
 pub mod variable_resolver;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
-pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry};
+pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
 use crate::stdlib::variable::variable_impl;
-use crate::stdlib::variable::VariableRef;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
