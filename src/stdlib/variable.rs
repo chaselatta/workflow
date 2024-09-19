@@ -1,5 +1,5 @@
 use crate::stdlib::errors::StdlibError;
-use crate::stdlib::parser::parse_context::ParseContext;
+use crate::stdlib::ParseDelegateHolder;
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::eval::Evaluator;
@@ -10,6 +10,7 @@ use starlark::values::NoSerialize;
 use starlark::values::ProvidesStaticType;
 use starlark::values::StarlarkValue;
 use std::fmt;
+use std::ops::Deref;
 use uuid::Uuid;
 
 pub(crate) fn variable_impl(
@@ -21,11 +22,10 @@ pub(crate) fn variable_impl(
     eval: &mut Evaluator,
 ) -> anyhow::Result<VariableRef> {
     let var_ref = VariableRef::new();
+    let _var = VariableEntry::from_starlark(default, env, cli_flag, readers, writers)?;
 
-    if let Ok(ctx) = ParseContext::from_evaluator(eval) {
-        let var = VariableEntry::from_starlark(default, env, cli_flag, readers, writers)?;
-        ctx.variable_store()
-            .register_variable(var_ref.identifier(), var);
+    if let Ok(delegate) = ParseDelegateHolder::from_evaluator(&eval) {
+        delegate.deref().on_variable(1);
     }
     Ok(var_ref)
 }
@@ -289,7 +289,14 @@ impl VariableEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::downcast_delegate_ref;
+    use crate::stdlib::starlark_stdlib;
+    use crate::stdlib::test_utils::TestParseDelegate;
     use crate::stdlib::test_utils::{assert_env, TempEnvVar};
+    use starlark::environment::{GlobalsBuilder, Module};
+    use starlark::syntax::AstModule;
+    use starlark::syntax::Dialect;
+    use std::ops::Deref;
 
     #[test]
     fn test_can_parse_simple_variable() {
@@ -326,6 +333,30 @@ variable(
         let b = VariableRef::from_value(b_frozen.value()).unwrap();
 
         assert_ne!(a.identifier(), b.identifier());
+    }
+
+    #[test]
+    fn test_delegate_function_called() {
+        let module: Module = Module::new();
+
+        let delegate = TestParseDelegate::default();
+        let holder = ParseDelegateHolder::new(delegate);
+        let mut eval: Evaluator = Evaluator::new(&module);
+
+        eval.extra = Some(&holder);
+
+        let content = "variable(); variable()";
+
+        let ast = AstModule::parse("test.star", content.to_string(), &Dialect::Standard).unwrap();
+        let globals = GlobalsBuilder::standard().with(starlark_stdlib).build();
+        eval.eval_module(ast, &globals).unwrap();
+
+        assert_eq!(
+            downcast_delegate_ref!(holder, TestParseDelegate)
+                .unwrap()
+                .on_variable_call_count,
+            2.into()
+        );
     }
 
     // --- env

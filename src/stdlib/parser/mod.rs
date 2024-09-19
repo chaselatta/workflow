@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn test_parse_file() {
         let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        file.push("src/test_data/vars_only.workflow");
+        file.push("src/test_data/legacy_vars_only.workflow");
 
         let parser = Parser::new(file).unwrap();
         let module: Module = Module::new();

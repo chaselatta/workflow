@@ -1,22 +1,27 @@
+use crate::stdlib::errors::StdlibError;
 use anyhow::bail;
 use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
+use std::any::Any;
 use std::fmt::Debug;
 use std::ops::Deref;
-
-use crate::stdlib::errors::StdlibError;
+use std::path::PathBuf;
 
 /// A delegate for parse events
-pub trait ParseDelegate {
+pub trait ParseDelegate: Any {
+    fn as_any(&self) -> &dyn Any;
+
     /// Called when a variable is found
     fn on_variable(&self, i: u32);
+
+    fn will_parse_workflow(&self, _workflow: PathBuf) {}
 }
 
 /// The ParseDelegateHolder provides a way to hold the delegate
 /// so we can pass the delegate into the evaluator
 #[derive(ProvidesStaticType)]
 pub struct ParseDelegateHolder {
-    pub delegate: Box<dyn ParseDelegate>,
+    inner: Box<dyn ParseDelegate + 'static>,
 }
 
 impl ParseDelegateHolder {
@@ -25,7 +30,7 @@ impl ParseDelegateHolder {
         T: ParseDelegate + Debug + 'static,
     {
         ParseDelegateHolder {
-            delegate: Box::new(delegate),
+            inner: Box::new(delegate),
         }
     }
 
@@ -34,6 +39,14 @@ impl ParseDelegateHolder {
             return Ok(extra.downcast_ref::<ParseDelegateHolder>().unwrap());
         }
         bail!(StdlibError::MissingDelegate);
+    }
+}
+
+impl Deref for ParseDelegateHolder {
+    type Target = Box<dyn ParseDelegate + 'static>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -46,19 +59,16 @@ impl Debug for ParseDelegateHolder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::downcast_delegate_ref;
+    use crate::stdlib::test_utils::TestParseDelegate;
     use starlark::environment::Module;
-
-    #[derive(Debug)]
-    struct StubDelegate {}
-    impl ParseDelegate for StubDelegate {
-        fn on_variable(&self, i: u32) {}
-    }
+    use std::ops::Deref;
 
     #[test]
     fn test_from_evaluator() {
         let module: Module = Module::new();
         let mut eval: Evaluator = Evaluator::new(&module);
-        let delegate = StubDelegate {};
+        let delegate: TestParseDelegate = TestParseDelegate::default();
         let holder = ParseDelegateHolder::new(delegate);
 
         eval.extra = Some(&holder);
@@ -83,7 +93,7 @@ mod tests {
     fn test_can_call_delegate() {
         let module: Module = Module::new();
         let mut eval: Evaluator = Evaluator::new(&module);
-        let delegate = StubDelegate {};
+        let delegate = TestParseDelegate::default();
         let holder = ParseDelegateHolder::new(delegate);
 
         eval.extra = Some(&holder);
@@ -92,6 +102,24 @@ mod tests {
         let eval = Box::new(eval);
 
         let holder = ParseDelegateHolder::from_evaluator(&eval).unwrap();
-        holder.delegate.deref().on_variable(1);
+        holder.deref().on_variable(1);
+    }
+
+    #[test]
+    fn test_downcast_delegate_ref_success() {
+        let delegate = TestParseDelegate::default();
+        let holder = ParseDelegateHolder::new(delegate);
+
+        let d = downcast_delegate_ref!(holder, TestParseDelegate);
+        assert!(d.is_some());
+    }
+
+    #[test]
+    fn test_downcast_delegate_ref_fail() {
+        let delegate = TestParseDelegate::default();
+        let holder = ParseDelegateHolder::new(delegate);
+
+        let d = downcast_delegate_ref!(holder, ParseDelegateHolder);
+        assert!(d.is_none());
     }
 }

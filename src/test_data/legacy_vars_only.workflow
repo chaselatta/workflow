@@ -1,4 +1,5 @@
-var_1 = variable(
+variable(
+  name =  "var_1",
   default =  "some default",
   readers =  ["foo", "bar"],
   writers =  ["foo", "bar"],
@@ -6,15 +7,14 @@ var_1 = variable(
   env =  "VAR_ONE",
 )
 
-var_2 = variable(
+variable(
+  name =  "var_2",
   default =  "some default",
   readers =  ["foo", "bar"],
   writers =  ["foo", "bar"],
   env =  "VAR_TWO",
 )
 
-var_3 = variable(
+variable(
+  name =  "var_3",
 )
-
-# Leave this value here for tests
-1
