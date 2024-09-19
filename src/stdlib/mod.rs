@@ -7,6 +7,7 @@ pub mod variable;
 pub mod variable_resolver;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
+pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry};
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
@@ -104,7 +105,7 @@ pub mod test_utils {
     }
 
     impl ParseDelegate for TestParseDelegate {
-        fn on_variable(&self, _i: u32) {
+        fn on_variable(&self, _id: &str, _v: VariableEntry) {
             let v = *self.on_variable_call_count.borrow() + 1;
             self.on_variable_call_count.replace(v);
         }

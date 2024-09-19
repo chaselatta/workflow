@@ -22,10 +22,12 @@ pub(crate) fn variable_impl(
     eval: &mut Evaluator,
 ) -> anyhow::Result<VariableRef> {
     let var_ref = VariableRef::new();
-    let _var = VariableEntry::from_starlark(default, env, cli_flag, readers, writers)?;
 
     if let Ok(delegate) = ParseDelegateHolder::from_evaluator(&eval) {
-        delegate.deref().on_variable(1);
+        delegate.deref().on_variable(
+            var_ref.identifier(),
+            VariableEntry::from_starlark(default, env, cli_flag, readers, writers)?,
+        );
     }
     Ok(var_ref)
 }
@@ -124,7 +126,7 @@ impl ValueContext {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq)]
 pub struct VariableEntry {
     value_ctx: Option<ValueContext>,
     env: Option<String>,
@@ -247,6 +249,10 @@ impl VariableEntry {
 
     pub fn value(&self) -> Option<String> {
         self.value_ctx.clone().map(|ctx| ctx.value)
+    }
+
+    pub fn value_ctx(&self) -> Option<ValueContext> {
+        self.value_ctx.clone()
     }
 
     pub fn try_update_value_from_env(&mut self) -> anyhow::Result<()> {
