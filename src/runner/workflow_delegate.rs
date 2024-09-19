@@ -4,6 +4,7 @@ use crate::stdlib::VariableEntry;
 use std::cell::RefCell;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct WorkflowDelegate {
     workflow_file: RefCell<Option<PathBuf>>,
     variable_store: VariableStore,
@@ -15,6 +16,10 @@ impl WorkflowDelegate {
             workflow_file: None.into(),
             variable_store: VariableStore::new(),
         };
+    }
+
+    pub fn variable_store(&self) -> &VariableStore {
+        &self.variable_store
     }
 }
 

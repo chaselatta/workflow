@@ -131,9 +131,7 @@ pub struct VariableEntry {
     value_ctx: Option<ValueContext>,
     env: Option<String>,
     cli_flag: Option<String>,
-    #[allow(dead_code)]
     readers: VariableScope,
-    #[allow(dead_code)]
     writers: VariableScope,
 }
 
@@ -152,6 +150,34 @@ impl VariableEntry {
             writers: VariableEntry::validate_scope(writers.map(|v| v.to_vec()))?,
             value_ctx: default.map(|d| ValueContext::new(d, ValueUpdatedBy::DefaultValue)),
         })
+    }
+
+    pub fn update_value<T: Into<String>>(&mut self, val: T, updated_by: ValueUpdatedBy) {
+        self.value_ctx = Some(ValueContext::new(val, updated_by));
+    }
+
+    pub fn value(&self) -> Option<String> {
+        self.value_ctx.clone().map(|ctx| ctx.value)
+    }
+
+    pub fn value_ctx(&self) -> Option<ValueContext> {
+        self.value_ctx.clone()
+    }
+
+    pub fn env(&self) -> Option<String> {
+        self.env.clone()
+    }
+
+    pub fn cli_flag(&self) -> Option<String> {
+        self.cli_flag.clone()
+    }
+
+    pub fn readers(&self) -> VariableScope {
+        self.readers.clone()
+    }
+
+    pub fn writers(&self) -> VariableScope {
+        self.writers.clone()
     }
 
     #[cfg(test)]
@@ -241,18 +267,6 @@ impl VariableEntry {
         }
 
         Ok(VariableScope::Global)
-    }
-
-    pub fn update_value<T: Into<String>>(&mut self, val: T, updated_by: ValueUpdatedBy) {
-        self.value_ctx = Some(ValueContext::new(val, updated_by));
-    }
-
-    pub fn value(&self) -> Option<String> {
-        self.value_ctx.clone().map(|ctx| ctx.value)
-    }
-
-    pub fn value_ctx(&self) -> Option<ValueContext> {
-        self.value_ctx.clone()
     }
 
     pub fn try_update_value_from_env(&mut self) -> anyhow::Result<()> {

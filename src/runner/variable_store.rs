@@ -47,6 +47,16 @@ impl VariableStore {
             var.update_value(value, updated_by);
         }
     }
+
+    pub fn with_variable<F>(&self, name: &str, f: F)
+    where
+        F: FnOnce(&VariableEntry),
+    {
+        let vars = self.vars.borrow();
+        if let Some(var) = vars.get(name) {
+            f(var);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -71,5 +81,16 @@ mod tests {
         store.update_variable_value("123", "new value".into(), ValueUpdatedBy::ForTest);
         let var = store.get_variable_value("123");
         assert_eq!(var, Some("new value".to_string()));
+    }
+
+    #[test]
+    fn test_iter_variables() {
+        let store = VariableStore::new();
+        store.register_variable("1", VariableEntry::for_test(None, None, None));
+        store.register_variable("2", VariableEntry::for_test(None, None, None));
+
+        let mut iter_count = 0;
+        store.iter_variables(|_| iter_count += 1);
+        assert_eq!(iter_count, 2);
     }
 }
