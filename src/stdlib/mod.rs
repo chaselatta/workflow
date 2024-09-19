@@ -19,6 +19,19 @@ use starlark::values::list::ListOf;
 use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
 
+/// A macro to downcast the delegate to an Option<T> without having
+/// to deal with lifetimes.
+///
+/// let delegate: Option<Foo> = downcast_delegate_ref!(holder, Foo);
+#[macro_export]
+macro_rules! downcast_delegate_ref {
+    ($y:ident, $x:tt) => {
+        (&*$y.deref()).as_any().downcast_ref::<$x>()
+    };
+}
+
+pub use downcast_delegate_ref;
+
 /// The workflow standard library. All functions in this module
 /// are added to the workflow parser to be made availalbe to workflows.
 #[starlark_module]
@@ -48,6 +61,9 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
 pub mod test_utils {
     use super::*;
     use starlark::assert::Assert;
+    use std::any::Any;
+    use std::cell::RefCell;
+    use std::path::PathBuf;
 
     pub struct TempEnvVar {
         pub key: String,
@@ -79,5 +95,26 @@ pub mod test_utils {
         let mut env = Assert::new();
         env.globals_add(starlark_stdlib);
         env
+    }
+
+    #[derive(Debug, Default)]
+    pub struct TestParseDelegate {
+        pub on_variable_call_count: RefCell<u32>,
+        pub workflow_file: RefCell<PathBuf>,
+    }
+
+    impl ParseDelegate for TestParseDelegate {
+        fn on_variable(&self, _i: u32) {
+            let v = *self.on_variable_call_count.borrow() + 1;
+            self.on_variable_call_count.replace(v);
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn will_parse_workflow(&self, workflow: PathBuf) {
+            self.workflow_file.replace(workflow);
+        }
     }
 }
