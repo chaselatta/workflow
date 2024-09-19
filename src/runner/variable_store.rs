@@ -1,5 +1,6 @@
-use crate::stdlib::variable::VariableEntry;
-use starlark::values::ProvidesStaticType;
+use crate::stdlib::{ValueUpdatedBy, VariableEntry};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 // variable() -> VariableRef which holds the identifier
 // variable() emits values to the parse context
@@ -14,21 +15,61 @@ use starlark::values::ProvidesStaticType;
 // for things like tools and such we can also lock the variable store or we can
 // just say that variables are globally available to tools.
 
-#[derive(Debug, ProvidesStaticType, Default, PartialEq)]
-pub struct VariableStore {}
+#[derive(Debug, Default, PartialEq)]
+pub struct VariableStore {
+    vars: RefCell<HashMap<String, VariableEntry>>,
+}
 
 impl VariableStore {
     pub fn new() -> Self {
-        VariableStore {}
+        VariableStore {
+            vars: HashMap::new().into(),
+        }
     }
 
-    pub fn register_variable(&self, _identifier: &str, _entry: VariableEntry) {
-        // TODO
+    pub fn register_variable(&self, identifier: &str, var: VariableEntry) {
+        self.vars.borrow_mut().insert(identifier.to_string(), var);
+    }
+
+    pub fn get_variable_value<'a>(&self, identifier: &str) -> Option<String> {
+        let vars = self.vars.borrow();
+        vars.get(identifier).map(|v| v.value()).flatten().clone()
+    }
+
+    pub fn update_variable_value<'a>(
+        &self,
+        identifier: &str,
+        value: String,
+        updated_by: ValueUpdatedBy,
+    ) {
+        let mut vars = self.vars.borrow_mut();
+        if let Some(var) = vars.get_mut(identifier) {
+            var.update_value(value, updated_by);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    // Test registering
-    // add ability to update all variables from environment here
+    use super::*;
+
+    #[test]
+    fn test_register_variable() {
+        let store = VariableStore::new();
+        let var = VariableEntry::for_test(Some("foo"), None, None);
+        store.register_variable("123", var);
+
+        let var = store.get_variable_value("123");
+        assert_eq!(var, Some("foo".to_string()));
+    }
+
+    #[test]
+    fn test_update_variable() {
+        let store = VariableStore::new();
+        let var = VariableEntry::for_test(None, None, None);
+        store.register_variable("123", var);
+        store.update_variable_value("123", "new value".into(), ValueUpdatedBy::ForTest);
+        let var = store.get_variable_value("123");
+        assert_eq!(var, Some("new value".to_string()));
+    }
 }

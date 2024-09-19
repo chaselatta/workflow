@@ -1,4 +1,5 @@
 use crate::stdlib::errors::StdlibError;
+use crate::stdlib::VariableEntry;
 use anyhow::bail;
 use starlark::eval::Evaluator;
 use starlark::values::ProvidesStaticType;
@@ -12,8 +13,9 @@ pub trait ParseDelegate: Any {
     fn as_any(&self) -> &dyn Any;
 
     /// Called when a variable is found
-    fn on_variable(&self, i: u32);
+    fn on_variable(&self, _identifier: &str, _variable: VariableEntry) {}
 
+    /// Called when the workflow parsing starts
     fn will_parse_workflow(&self, _workflow: PathBuf) {}
 }
 
@@ -102,7 +104,7 @@ mod tests {
         let eval = Box::new(eval);
 
         let holder = ParseDelegateHolder::from_evaluator(&eval).unwrap();
-        holder.deref().on_variable(1);
+        holder.deref().will_parse_workflow(PathBuf::default());
     }
 
     #[test]

@@ -1,18 +1,19 @@
 use super::VariableStore;
 use crate::stdlib::ParseDelegate;
+use crate::stdlib::VariableEntry;
 use std::cell::RefCell;
 use std::path::PathBuf;
 
 pub struct WorkflowDelegate {
     workflow_file: RefCell<Option<PathBuf>>,
-    _variable_store: VariableStore,
+    variable_store: VariableStore,
 }
 
 impl WorkflowDelegate {
     pub fn new() -> Self {
         return WorkflowDelegate {
             workflow_file: None.into(),
-            _variable_store: VariableStore::default(),
+            variable_store: VariableStore::new(),
         };
     }
 }
@@ -22,7 +23,9 @@ impl ParseDelegate for WorkflowDelegate {
         self
     }
 
-    fn on_variable(&self, _i: u32) {}
+    fn on_variable(&self, identifier: &str, variable: VariableEntry) {
+        self.variable_store.register_variable(identifier, variable);
+    }
 
     fn will_parse_workflow(&self, workflow: PathBuf) {
         self.workflow_file.replace(Some(workflow));
