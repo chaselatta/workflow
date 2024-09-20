@@ -17,6 +17,9 @@ pub trait ParseDelegate: Any {
 
     /// Called when the workflow parsing starts
     fn will_parse_workflow(&self, _workflow: PathBuf) {}
+
+    /// Called when the workflow parsing ends
+    fn did_parse_workflow(&self) {}
 }
 
 /// The ParseDelegateHolder provides a way to hold the delegate

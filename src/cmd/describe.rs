@@ -2,7 +2,6 @@ use crate::cmd::{GlobalArgs, RunCommand};
 use crate::downcast_delegate_ref;
 use crate::runner::{Runner, WorkflowDelegate};
 use crate::stdlib::legacy::tool::FrozenTool;
-use crate::stdlib::legacy::variable::FrozenVariable;
 use crate::stdlib::{VariableEntry, VariableRef};
 use ansi_term::Colour::{Cyan, Green, Red};
 use anyhow::bail;
@@ -154,8 +153,10 @@ impl RunCommand for DescribeArgs {
             let column_width = 80;
             println!("Parsing workflow at {:?}", self.workflow);
 
-            // let parser = Parser::new(self.workflow.clone())?;
-            let runner = Runner::new(self.workflow.clone(), WorkflowDelegate::new())?;
+            let runner = Runner::new(
+                self.workflow.clone(),
+                WorkflowDelegate::with_args(self.workflow_args.clone()),
+            )?;
             let module: Module = Module::new();
             let mut eval: Evaluator = Evaluator::new(&module);
 
