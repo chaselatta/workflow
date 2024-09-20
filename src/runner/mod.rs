@@ -47,6 +47,7 @@ impl Runner {
             .eval_module(ast, &self.globals)
             .map_err(|e| e.into_anyhow())?;
 
+        self.delegate.deref().did_parse_workflow();
         Ok(res)
     }
 
@@ -63,7 +64,7 @@ mod tests {
     use starlark::environment::Module;
 
     #[test]
-    fn test_parse_file_calls_will_parse() {
+    fn test_parse_file_calls_will_and_did_parse() {
         let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         file.push("src/test_data/vars_only.workflow");
         let expected = file.clone();
@@ -81,6 +82,12 @@ mod tests {
                 .unwrap()
                 .workflow_file,
             expected.into()
+        );
+        assert_eq!(
+            downcast_delegate_ref!(holder, TestParseDelegate)
+                .unwrap()
+                .completed,
+            true.into()
         );
     }
 

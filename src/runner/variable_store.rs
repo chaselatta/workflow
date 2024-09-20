@@ -57,11 +57,26 @@ impl VariableStore {
             f(var);
         }
     }
+
+    pub fn realize_variables(&self, workflow_args: &Vec<String>) {
+        let mut vars = self.vars.borrow_mut();
+        for var in vars.values_mut() {
+            // First, check to see if there is a command line flag that matches
+            if var.try_update_value_from_cli_flag(workflow_args).is_ok() {
+                continue;
+            }
+            // Next,  try to set the value from the env
+            if var.try_update_value_from_env().is_ok() {
+                continue;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::test_utils::TempEnvVar;
 
     #[test]
     fn test_register_variable() {
@@ -84,13 +99,31 @@ mod tests {
     }
 
     #[test]
-    fn test_iter_variables() {
+    fn test_relaize_variables() {
+        let env = TempEnvVar::new("ENV_VAR_FOR_test_realize_variables_env", "some_value");
         let store = VariableStore::new();
-        store.register_variable("1", VariableEntry::for_test(None, None, None));
-        store.register_variable("2", VariableEntry::for_test(None, None, None));
+        store.register_variable("1", VariableEntry::for_test(None, Some("--foo"), None));
+        store.register_variable(
+            "2",
+            VariableEntry::for_test(None, None, Some(&env.key.clone())),
+        );
+        store.register_variable(
+            "3",
+            VariableEntry::for_test(None, Some("--bar"), Some(&env.key.clone())),
+        );
 
-        let mut iter_count = 0;
-        store.iter_variables(|_| iter_count += 1);
-        assert_eq!(iter_count, 2);
+        store.realize_variables(&vec![
+            "--foo".to_string(),
+            "foo_value".to_string(),
+            "--bar".to_string(),
+            "bar_value".to_string(),
+        ]);
+
+        assert_eq!(store.get_variable_value("1"), Some("foo_value".to_string()));
+        assert_eq!(
+            store.get_variable_value("2"),
+            Some("some_value".to_string())
+        );
+        assert_eq!(store.get_variable_value("3"), Some("bar_value".to_string()));
     }
 }

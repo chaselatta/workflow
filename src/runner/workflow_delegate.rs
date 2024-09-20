@@ -8,13 +8,19 @@ use std::path::PathBuf;
 pub struct WorkflowDelegate {
     workflow_file: RefCell<Option<PathBuf>>,
     variable_store: VariableStore,
+    workflow_args: Vec<String>,
 }
 
 impl WorkflowDelegate {
     pub fn new() -> Self {
+        WorkflowDelegate::with_args(vec![])
+    }
+
+    pub fn with_args(args: Vec<String>) -> Self {
         return WorkflowDelegate {
             workflow_file: None.into(),
             variable_store: VariableStore::new(),
+            workflow_args: args,
         };
     }
 
@@ -34,6 +40,10 @@ impl ParseDelegate for WorkflowDelegate {
 
     fn will_parse_workflow(&self, workflow: PathBuf) {
         self.workflow_file.replace(Some(workflow));
+    }
+
+    fn did_parse_workflow(&self) {
+        self.variable_store.realize_variables(&self.workflow_args);
     }
 }
 

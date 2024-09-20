@@ -101,6 +101,7 @@ pub mod test_utils {
     pub struct TestParseDelegate {
         pub on_variable_call_count: RefCell<u32>,
         pub workflow_file: RefCell<PathBuf>,
+        pub completed: RefCell<bool>,
     }
 
     impl ParseDelegate for TestParseDelegate {
@@ -115,6 +116,10 @@ pub mod test_utils {
 
         fn will_parse_workflow(&self, workflow: PathBuf) {
             self.workflow_file.replace(workflow);
+        }
+
+        fn did_parse_workflow(&self) {
+            self.completed.replace(true);
         }
     }
 }
