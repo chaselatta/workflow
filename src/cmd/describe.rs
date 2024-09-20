@@ -1,7 +1,6 @@
 use crate::cmd::{GlobalArgs, RunCommand};
 use crate::downcast_delegate_ref;
 use crate::runner::{Runner, WorkflowDelegate};
-use crate::stdlib::legacy::tool::FrozenTool;
 use crate::stdlib::{VariableEntry, VariableRef};
 use ansi_term::Colour::{Cyan, Green, Red};
 use anyhow::bail;
@@ -75,15 +74,15 @@ fn format_optional_string(v: Option<String>) -> String {
     )
 }
 
-fn format_bool(v: bool) -> String {
-    format!(
-        "{}",
-        match v {
-            true => Green.paint("True"),
-            false => Red.paint("False"),
-        }
-    )
-}
+// fn format_bool(v: bool) -> String {
+//     format!(
+//         "{}",
+//         match v {
+//             true => Green.paint("True"),
+//             false => Red.paint("False"),
+//         }
+//     )
+// }
 
 fn print_variable_entry(name: &str, var: &VariableEntry) {
     println!("{}: ", Cyan.paint(name.to_string()));
@@ -124,28 +123,28 @@ fn print_variable_entry(name: &str, var: &VariableEntry) {
     println!("");
 }
 
-fn print_tool(tool: &FrozenTool) {
-    println!("{}: ", Cyan.paint(tool.name.clone()));
+// fn print_tool(tool: &FrozenTool) {
+//     println!("{}: ", Cyan.paint(tool.name.clone()));
 
-    let records = vec![
-        AlignedRecord::new("is builtin", format_bool(tool.builtin)),
-        AlignedRecord::new("path", format_optional_string(tool.path.clone())),
-        AlignedRecord::new(
-            "cmd",
-            format_optional_string(tool.cmd.clone().map(|c| format!("{}", c.display()))),
-        ),
-    ];
-    let mut max = 0;
-    for r in &records {
-        max = cmp::max(max, r.size);
-    }
+//     let records = vec![
+//         AlignedRecord::new("is builtin", format_bool(tool.builtin)),
+//         AlignedRecord::new("path", format_optional_string(tool.path.clone())),
+//         AlignedRecord::new(
+//             "cmd",
+//             format_optional_string(tool.cmd.clone().map(|c| format!("{}", c.display()))),
+//         ),
+//     ];
+//     let mut max = 0;
+//     for r in &records {
+//         max = cmp::max(max, r.size);
+//     }
 
-    for record in &records {
-        println!("  - {}", record.display_with_size(max));
-    }
+//     for record in &records {
+//         println!("  - {}", record.display_with_size(max));
+//     }
 
-    println!("");
-}
+//     println!("");
+// }
 
 impl RunCommand for DescribeArgs {
     fn run(&self, _global_args: &GlobalArgs) -> anyhow::Result<()> {

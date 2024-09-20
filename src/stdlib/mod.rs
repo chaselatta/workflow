@@ -3,6 +3,7 @@ pub mod format;
 pub mod legacy;
 pub mod parse_delegate;
 pub mod parser;
+pub mod tool;
 pub mod variable;
 pub mod variable_resolver;
 
@@ -11,6 +12,7 @@ pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, V
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
+use crate::stdlib::tool::{tool_impl, Tool};
 use crate::stdlib::variable::variable_impl;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
@@ -55,6 +57,18 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
     ) -> anyhow::Result<ValueFormatter> {
         format_impl(fmt_str, args)
     }
+
+    /// The tool definition
+    fn tool<'v>(#[starlark(require = named)] path: Value<'v>) -> anyhow::Result<Tool<'v>> {
+        tool_impl(path)
+    }
+
+    // fn builtin_tool<'v>(
+    //     #[starlark(require = named)] name: &str,
+    // ) -> anyhow::Result<Tool<'v>> {
+    //     // tool_impl(path, other)
+    //     bail!("NOT IMPLEMENTED")
+    // }
 }
 
 #[cfg(test)]

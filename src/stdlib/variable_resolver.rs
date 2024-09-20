@@ -35,6 +35,12 @@ impl VariableResolver for HashMap<&str, &str> {
     }
 }
 
+impl VariableResolver for String {
+    fn resolve(&self, _identifier: &str) -> anyhow::Result<String> {
+        Ok(self.clone())
+    }
+}
+
 #[derive(Debug, ProvidesStaticType, Allocative, Clone)]
 enum OneOf {
     Value(String),

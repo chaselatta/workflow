@@ -90,7 +90,6 @@ mod tests {
         parser.parse_workflow(&mut eval).unwrap();
 
         assert_eq!(parser.ctx.snapshot().variables.len(), 3);
-        // assert_eq!(parser.workflow_file, file);
     }
 
     #[test]
