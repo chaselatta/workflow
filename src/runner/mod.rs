@@ -54,6 +54,12 @@ impl Runner {
     pub fn delegate(&self) -> &ParseDelegateHolder {
         &self.delegate
     }
+
+    pub fn working_dir(&self) -> PathBuf {
+        let mut parent = self.workflow_file.clone();
+        parent.pop();
+        parent
+    }
 }
 
 #[cfg(test)]
@@ -62,6 +68,7 @@ mod tests {
     use crate::downcast_delegate_ref;
     use crate::stdlib::test_utils::TestParseDelegate;
     use starlark::environment::Module;
+    use std::ffi::OsStr;
 
     #[test]
     fn test_parse_file_calls_will_and_did_parse() {
@@ -106,5 +113,18 @@ mod tests {
         file.push("src/test_data/__no_file__.workflow");
 
         Runner::new(file, TestParseDelegate::default()).unwrap();
+    }
+
+    #[test]
+    fn test_working_dir() {
+        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        file.push("src/test_data/vars_only.workflow");
+
+        let runner = Runner::new(file, TestParseDelegate::default()).unwrap();
+
+        assert_eq!(
+            runner.working_dir().file_name(),
+            Some(OsStr::new("test_data")),
+        )
     }
 }

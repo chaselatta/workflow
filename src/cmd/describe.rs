@@ -1,6 +1,7 @@
 use crate::cmd::{GlobalArgs, RunCommand};
 use crate::downcast_delegate_ref;
 use crate::runner::{Runner, WorkflowDelegate};
+use crate::stdlib::tool::Tool;
 use crate::stdlib::{VariableEntry, VariableRef};
 use ansi_term::Colour::{Cyan, Green, Red};
 use anyhow::bail;
@@ -74,15 +75,26 @@ fn format_optional_string(v: Option<String>) -> String {
     )
 }
 
-// fn format_bool(v: bool) -> String {
-//     format!(
-//         "{}",
-//         match v {
-//             true => Green.paint("True"),
-//             false => Red.paint("False"),
-//         }
-//     )
-// }
+fn format_result<T: std::fmt::Display>(v: anyhow::Result<T>) -> String {
+    format!(
+        "{}",
+        match v {
+            Ok(s) => Green.paint(s.to_string()),
+            // TODO: return the actual error
+            Err(_) => Red.paint("Error getting value"),
+        }
+    )
+}
+
+fn format_bool(v: bool) -> String {
+    format!(
+        "{}",
+        match v {
+            true => Green.paint("True"),
+            false => Red.paint("False"),
+        }
+    )
+}
 
 fn print_variable_entry(name: &str, var: &VariableEntry) {
     println!("{}: ", Cyan.paint(name.to_string()));
@@ -123,28 +135,37 @@ fn print_variable_entry(name: &str, var: &VariableEntry) {
     println!("");
 }
 
-// fn print_tool(tool: &FrozenTool) {
-//     println!("{}: ", Cyan.paint(tool.name.clone()));
+fn print_tool(name: &str, tool: &Tool, delegate: &WorkflowDelegate, working_dir: &PathBuf) {
+    println!("{}: ", Cyan.paint(name.to_string()));
 
-//     let records = vec![
-//         AlignedRecord::new("is builtin", format_bool(tool.builtin)),
-//         AlignedRecord::new("path", format_optional_string(tool.path.clone())),
-//         AlignedRecord::new(
-//             "cmd",
-//             format_optional_string(tool.cmd.clone().map(|c| format!("{}", c.display()))),
-//         ),
-//     ];
-//     let mut max = 0;
-//     for r in &records {
-//         max = cmp::max(max, r.size);
-//     }
+    let records = vec![
+        AlignedRecord::new("is builtin", format_bool(tool.is_builtin())),
+        AlignedRecord::new(
+            "path",
+            format_result(
+                tool.path(delegate, working_dir)
+                    .map(|p| format!("{}", p.display())),
+            ),
+        ),
+        AlignedRecord::new(
+            "real_path",
+            format_result(
+                tool.real_path(delegate, working_dir)
+                    .map(|p| format!("{}", p.display())),
+            ),
+        ),
+    ];
+    let mut max = 0;
+    for r in &records {
+        max = cmp::max(max, r.size);
+    }
 
-//     for record in &records {
-//         println!("  - {}", record.display_with_size(max));
-//     }
+    for record in &records {
+        println!("  - {}", record.display_with_size(max));
+    }
 
-//     println!("");
-// }
+    println!("");
+}
 
 impl RunCommand for DescribeArgs {
     fn run(&self, _global_args: &GlobalArgs) -> anyhow::Result<()> {
@@ -163,6 +184,7 @@ impl RunCommand for DescribeArgs {
 
             let holder = runner.delegate();
             let delegate = downcast_delegate_ref!(holder, WorkflowDelegate).unwrap();
+            let working_dir = runner.working_dir();
 
             //TODO: This is not very performant, We should iterate the globals once
             // and then place them in their types.
@@ -176,6 +198,16 @@ impl RunCommand for DescribeArgs {
                             .with_variable(entry.identifier(), |v| {
                                 print_variable_entry(&name, v);
                             });
+                    }
+                }
+            }
+
+            print_header("Tools", column_width);
+            let names = module.names();
+            for name in names {
+                if let Some(value) = module.get(&name) {
+                    if let Some(entry) = Tool::from_value(value) {
+                        print_tool(&name, &entry, &delegate, &working_dir);
                     }
                 }
             }

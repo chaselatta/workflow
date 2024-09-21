@@ -19,17 +19,19 @@ var_3 = variable(
 #builtin_tool(
 #  name = "echo",
 #)
-# tool(
-#   name = "foo",
-#   path = "foo.sh",
-# )
+foo = tool(
+  path = "foo.sh",
+)
 
-# HOME = variable(
-#   name =  "HOME",
-#   env =  "HOME",
-# )
+b = "bar.sh"
+bar = tool(
+  path = format("{}", b)
+)
 
-# tool(
-#   name = "orchestral",
-#   path = "{variable(HOME)}/bin/orchestral",
-# )
+HOME = variable(
+  env =  "HOME",
+)
+
+orchestral = tool(
+  path = format("{}/bin/orchestral", HOME),
+)
