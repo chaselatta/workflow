@@ -45,12 +45,12 @@ impl<'a> Tool<'a> {
     pub fn real_path<T: VariableResolver>(
         &self,
         resolver: &T,
-        working_dir: PathBuf,
+        working_dir: &PathBuf,
     ) -> anyhow::Result<PathBuf> {
         // if self.builtin {
         // bail!("not implemented")
         // } else {
-        let path = self.path(resolver, working_dir)?;
+        let path = self.path(resolver, &working_dir)?;
         Ok(which(&path)?)
         // }
     }
@@ -59,7 +59,7 @@ impl<'a> Tool<'a> {
     pub fn path<T: VariableResolver>(
         &self,
         resolver: &T,
-        working_dir: PathBuf,
+        working_dir: &PathBuf,
     ) -> anyhow::Result<PathBuf> {
         let path = PathBuf::from({
             if let Some(formatter) = ValueFormatter::from_value(self.path) {
@@ -80,6 +80,10 @@ impl<'a> Tool<'a> {
                 new_path
             }
         })
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        self.builtin
     }
 }
 
@@ -125,7 +129,7 @@ mod tests {
         let tool = Tool::from_value(tool.value()).unwrap();
 
         assert_eq!(
-            tool.path(&"foo".to_string(), PathBuf::default()).unwrap(),
+            tool.path(&"foo".to_string(), &PathBuf::default()).unwrap(),
             PathBuf::from("foo".to_string())
         );
     }
@@ -138,7 +142,7 @@ mod tests {
         let tool = Tool::from_value(tool.value()).unwrap();
 
         assert_eq!(
-            tool.path(&"foo".to_string(), PathBuf::default()).unwrap(),
+            tool.path(&"foo".to_string(), &PathBuf::default()).unwrap(),
             PathBuf::from("foo".to_string())
         );
     }
@@ -154,7 +158,7 @@ mod tests {
         let tool = Tool::from_value(tool.value()).unwrap();
         let resolver = env!("CARGO_MANIFEST_DIR");
         assert_eq!(
-            tool.real_path(&resolver.to_string(), PathBuf::default())
+            tool.real_path(&resolver.to_string(), &PathBuf::default())
                 .unwrap(),
             PathBuf::from(format!("{}/src/test_data/foo.sh", resolver))
         );
@@ -171,7 +175,7 @@ mod tests {
         let tool = module.get("t").unwrap();
         let tool = Tool::from_value(tool.value()).unwrap();
         let resolver = env!("CARGO_MANIFEST_DIR");
-        tool.real_path(&resolver.to_string(), PathBuf::default())
+        tool.real_path(&resolver.to_string(), &PathBuf::default())
             .unwrap();
     }
 
@@ -188,7 +192,7 @@ mod tests {
         let tool = tool_impl(v.value()).unwrap();
 
         assert_eq!(
-            tool.real_path(&"".to_string(), PathBuf::from(&root))
+            tool.real_path(&"".to_string(), &PathBuf::from(&root))
                 .unwrap(),
             PathBuf::from(format!("{}/test_data/foo.sh", root))
         );

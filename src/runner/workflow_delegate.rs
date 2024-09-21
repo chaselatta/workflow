@@ -1,6 +1,8 @@
 use super::VariableStore;
+use crate::stdlib::variable_resolver::VariableResolver;
 use crate::stdlib::ParseDelegate;
 use crate::stdlib::VariableEntry;
+use anyhow::bail;
 use std::cell::RefCell;
 use std::path::PathBuf;
 
@@ -44,6 +46,15 @@ impl ParseDelegate for WorkflowDelegate {
 
     fn did_parse_workflow(&self) {
         self.variable_store.realize_variables(&self.workflow_args);
+    }
+}
+
+impl VariableResolver for WorkflowDelegate {
+    fn resolve(&self, identifier: &str) -> anyhow::Result<String> {
+        match self.variable_store.get_variable_value(identifier) {
+            Some(v) => Ok(v),
+            None => bail!("No value for variable"),
+        }
     }
 }
 
