@@ -12,7 +12,7 @@ pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, V
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
-use crate::stdlib::tool::{tool_impl, Tool};
+use crate::stdlib::tool::{builtin_tool_impl, tool_impl, Tool};
 use crate::stdlib::variable::variable_impl;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
@@ -63,12 +63,10 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         tool_impl(path)
     }
 
-    // fn builtin_tool<'v>(
-    //     #[starlark(require = named)] name: &str,
-    // ) -> anyhow::Result<Tool<'v>> {
-    //     // tool_impl(path, other)
-    //     bail!("NOT IMPLEMENTED")
-    // }
+    /// The builtin_tool definition
+    fn builtin_tool<'v>(#[starlark(require = named)] name: &str) -> anyhow::Result<Tool<'v>> {
+        builtin_tool_impl(name)
+    }
 }
 
 #[cfg(test)]

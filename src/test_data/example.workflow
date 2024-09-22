@@ -16,9 +16,10 @@ var_2 = variable(
 var_3 = variable(
 )
 
-#builtin_tool(
-#  name = "echo",
-#)
+echo = builtin_tool(
+ name = "echo",
+)
+
 foo = tool(
   path = "foo.sh",
 )
