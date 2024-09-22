@@ -122,7 +122,7 @@ impl<V> Display for ToolGen<V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stdlib::test_utils::assert_env;
+    use crate::stdlib::test_utils::{assert_env, TempWorkflowFile};
 
     #[test]
     fn test_can_parse_simple_tool() {
@@ -165,53 +165,53 @@ mod tests {
 
     #[test]
     fn test_path_based_tool_real_path_absolute() {
+        let exe = TempWorkflowFile::new_executable("foo.sh", "").unwrap();
         let mut env = assert_env();
         let module = env.module(
             "tool.star",
-            "v = variable(); t = tool(path=format('{}/src/test_data/foo.sh', v))",
+            "v = variable(); t = tool(path=format('{}/foo.sh', v))",
         );
         let tool = module.get("t").unwrap();
         let tool = Tool::from_value(tool.value()).unwrap();
-        let resolver = env!("CARGO_MANIFEST_DIR");
+        let dir = exe.dir();
+        let resolver = dir.as_os_str().to_str().unwrap();
         assert_eq!(
             tool.real_path(&resolver.to_string(), &PathBuf::default())
                 .unwrap(),
-            PathBuf::from(format!("{}/src/test_data/foo.sh", resolver))
+            PathBuf::from(format!("{}/foo.sh", resolver))
         );
     }
 
     #[test]
     #[should_panic]
     fn test_path_based_tool_real_path_absolute_fail() {
+        let exe = TempWorkflowFile::new_executable("foo.sh", "").unwrap();
         let mut env = assert_env();
         let module = env.module(
             "tool.star",
-            "v = variable(); t = tool(path=format('{}/src/test_data/__no_file__.sh', v))",
+            "v = variable(); t = tool(path=format('{}/__no_file__.sh', v))",
         );
         let tool = module.get("t").unwrap();
         let tool = Tool::from_value(tool.value()).unwrap();
-        let resolver = env!("CARGO_MANIFEST_DIR");
+        let dir = exe.dir();
+        let resolver = dir.as_os_str().to_str().unwrap();
         tool.real_path(&resolver.to_string(), &PathBuf::default())
             .unwrap();
     }
 
     #[test]
     fn test_path_based_tool_real_path_relative() {
+        let exe = TempWorkflowFile::new_executable("foo.sh", "").unwrap();
         let mut env = assert_env();
-        let module = env.module("tool.star", "v = 'test_data/foo.sh'");
+        let module = env.module("tool.star", "v = 'foo.sh'");
 
-        // Note, we cannot use the CARGO_MANIFEST_DIR here since it is the working
-        // directory for the tests so we just nest one level deeper.
-        let root = env!("CARGO_MANIFEST_DIR").to_owned() + "/src";
+        let root = exe.dir();
+
         // Use this approach so we can supply our own root
         let v = module.get("v").unwrap();
         let tool = tool_impl(v.value()).unwrap();
 
-        assert_eq!(
-            tool.real_path(&"".to_string(), &PathBuf::from(&root))
-                .unwrap(),
-            PathBuf::from(format!("{}/test_data/foo.sh", root))
-        );
+        assert_eq!(tool.real_path(&"".to_string(), &root).unwrap(), exe.path());
     }
 
     #[test]

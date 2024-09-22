@@ -162,7 +162,7 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     #[test]
     fn test_builtin_pass() {
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_validate_path_based_tool_path_absolute() -> anyhow::Result<()> {
         // Create a temporary directory
-        let tmp_dir = TempDir::new("")?;
+        let tmp_dir = TempDir::new()?;
 
         // Create a file in the temp dir that is executable
         let tmp_file_path = tmp_dir.path().join("foo.sh");
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn test_validate_path_based_tool_path_relative() -> anyhow::Result<()> {
         // Create a temporary directory
-        let tmp_dir = TempDir::new("")?;
+        let tmp_dir = TempDir::new()?;
         let mut tool_absolute_path = PathBuf::from(tmp_dir.path());
 
         // create a directory in the temporary dir called foo
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_validate_path_does_nothing_if_unknown_file() -> anyhow::Result<()> {
-        let tmp_dir = TempDir::new("")?;
+        let tmp_dir = TempDir::new()?;
 
         // This mimics a user writing a path relative to the workflow file
         let workflow_path = PathBuf::from(tmp_dir.path());
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn test_validate_path_based_with_string_interpolation() -> anyhow::Result<()> {
         // Create a temporary directory
-        let tmp_dir = TempDir::new("")?;
+        let tmp_dir = TempDir::new()?;
         let mut tool_absolute_path = PathBuf::from(tmp_dir.path());
 
         // create a directory in the temporary dir called foo
