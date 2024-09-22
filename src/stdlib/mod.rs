@@ -75,7 +75,12 @@ pub mod test_utils {
     use starlark::assert::Assert;
     use std::any::Any;
     use std::cell::RefCell;
+    use std::fs;
+    use std::fs::File;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     pub struct TempEnvVar {
         pub key: String,
@@ -132,6 +137,54 @@ pub mod test_utils {
 
         fn did_parse_workflow(&self) {
             self.completed.replace(true);
+        }
+    }
+
+    pub struct TempWorkflowFile {
+        _file: File,
+        dir: tempfile::TempDir,
+        file_path: PathBuf,
+    }
+
+    impl TempWorkflowFile {
+        pub fn new(name: &str, content: &str) -> anyhow::Result<Self> {
+            TempWorkflowFile::new_impl(name, content, false)
+        }
+
+        pub fn new_executable(name: &str, content: &str) -> anyhow::Result<Self> {
+            TempWorkflowFile::new_impl(name, content, true)
+        }
+
+        fn new_impl(name: &str, content: &str, executable: bool) -> anyhow::Result<Self> {
+            let dir = tempdir()?;
+
+            let file_path = dir.path().join(name);
+            let mut file = File::create(file_path.clone())?;
+            writeln!(file, "{}", content)?;
+
+            if executable {
+                let mut perms = file.metadata()?.permissions();
+                perms.set_mode(0o755);
+                file.set_permissions(perms)?;
+            }
+
+            Ok(TempWorkflowFile {
+                _file: file,
+                file_path: file_path,
+                dir: dir,
+            })
+        }
+
+        pub fn path(&self) -> PathBuf {
+            // On macos the tempfile returns the /var path which is a
+            // symlink to /private/var so we need to canonicalize it.
+            fs::canonicalize(self.file_path.clone()).unwrap()
+        }
+
+        pub fn dir(&self) -> PathBuf {
+            // On macos the tempfile returns the /var path which is a
+            // symlink to /private/var so we need to canonicalize it.
+            fs::canonicalize(PathBuf::from(self.dir.path())).unwrap()
         }
     }
 }

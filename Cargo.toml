@@ -17,5 +17,4 @@ uuid = { version =  "1.10.0", features = ["v4"] }
 which = "6.0.3"
 
 [dev-dependencies]
-tempdir = "0.3.7"
 tempfile = "3.12.0"

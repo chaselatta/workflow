@@ -75,20 +75,14 @@ impl Runner {
 mod tests {
     use super::*;
     use crate::downcast_delegate_ref;
-    use crate::stdlib::test_utils::TestParseDelegate;
+    use crate::stdlib::test_utils::{TempWorkflowFile, TestParseDelegate};
     use starlark::environment::Module;
-    use std::ffi::OsStr;
-    use std::fs::File;
-    use std::io::Write;
-    use tempfile::tempdir;
 
     #[test]
     fn test_parse_file_calls_will_and_did_parse() {
-        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        file.push("src/test_data/vars_only.workflow");
-        let expected = file.clone();
+        let file = TempWorkflowFile::new("test.workflow", "1").unwrap();
 
-        let runner = Runner::new(file, TestParseDelegate::default()).unwrap();
+        let runner = Runner::new(file.path(), TestParseDelegate::default()).unwrap();
         let module: Module = Module::new();
         let mut eval: Evaluator = Evaluator::new(&module);
 
@@ -100,7 +94,7 @@ mod tests {
             downcast_delegate_ref!(holder, TestParseDelegate)
                 .unwrap()
                 .workflow_file,
-            expected.into()
+            file.path().into()
         );
         assert_eq!(
             downcast_delegate_ref!(holder, TestParseDelegate)
@@ -112,50 +106,40 @@ mod tests {
 
     #[test]
     fn test_parser_create_success() {
-        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        file.push("src/test_data/vars_only.workflow");
+        let file = TempWorkflowFile::new("test.workflow", "").unwrap();
 
-        Runner::new(file, TestParseDelegate::default()).unwrap();
+        Runner::new(file.path(), TestParseDelegate::default()).unwrap();
     }
 
     #[test]
     #[should_panic(expected = "No such file or directory")]
     fn test_parser_create_fail() {
-        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        file.push("src/test_data/__no_file__.workflow");
+        let file = TempWorkflowFile::new("test.workflow", "").unwrap();
+        let mut bad_path = file.dir();
+        bad_path.push("__no_file__.workflow");
 
-        Runner::new(file, TestParseDelegate::default()).unwrap();
+        Runner::new(bad_path, TestParseDelegate::default()).unwrap();
     }
 
     #[test]
     fn test_working_dir() {
-        let mut file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        file.push("src/test_data/vars_only.workflow");
+        let file = TempWorkflowFile::new("test.workflow", "").unwrap();
 
-        let runner = Runner::new(file, TestParseDelegate::default()).unwrap();
+        let runner = Runner::new(file.path(), TestParseDelegate::default()).unwrap();
 
-        assert_eq!(
-            runner.working_dir().file_name(),
-            Some(OsStr::new("test_data")),
-        )
+        assert_eq!(runner.working_dir(), file.dir(),)
     }
 
     #[test]
     fn test_json_support() {
-        let dir = tempdir().unwrap();
+        let workfow_file =
+            TempWorkflowFile::new("json.workflow", "json.decode('[1, 2, 3]')").unwrap();
 
-        let file_path = dir.path().join("json.workflow");
-        let mut file = File::create(file_path.clone()).unwrap();
-        writeln!(file, "json.decode('[1, 2, 3]')").unwrap();
-
-        let runner = Runner::new(file_path.clone(), TestParseDelegate::default()).unwrap();
+        let runner = Runner::new(workfow_file.path(), TestParseDelegate::default()).unwrap();
 
         let module: Module = Module::new();
         let mut eval: Evaluator = Evaluator::new(&module);
 
         let _result = runner.parse_workflow(&mut eval).unwrap();
-
-        drop(file);
-        dir.close().unwrap();
     }
 }
