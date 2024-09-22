@@ -23,6 +23,15 @@ pub(crate) fn tool_impl<'v>(path: Value<'v>) -> anyhow::Result<Tool<'v>> {
     Ok(Tool {
         path: path,
         builtin: false,
+        name: "".to_string(),
+    })
+}
+
+pub(crate) fn builtin_tool_impl<'v>(name: &str) -> anyhow::Result<Tool<'v>> {
+    Ok(Tool {
+        path: Value::new_none(),
+        builtin: true,
+        name: name.to_string(),
     })
 }
 
@@ -33,6 +42,8 @@ pub(crate) fn tool_impl<'v>(path: Value<'v>) -> anyhow::Result<Tool<'v>> {
 pub struct ToolGen<V> {
     builtin: bool,
     path: V,
+    // name is only valid if builtin is true
+    name: String,
 }
 starlark_complex_value!(pub Tool);
 
@@ -47,12 +58,8 @@ impl<'a> Tool<'a> {
         resolver: &T,
         working_dir: &PathBuf,
     ) -> anyhow::Result<PathBuf> {
-        // if self.builtin {
-        // bail!("not implemented")
-        // } else {
         let path = self.path(resolver, &working_dir)?;
         Ok(which(&path)?)
-        // }
     }
 
     /// Returns the path of the tool. This tool is the raw path and is not validated.
@@ -61,29 +68,37 @@ impl<'a> Tool<'a> {
         resolver: &T,
         working_dir: &PathBuf,
     ) -> anyhow::Result<PathBuf> {
-        let path = PathBuf::from({
-            if let Some(formatter) = ValueFormatter::from_value(self.path) {
-                formatter.fmt(resolver)?
-            } else if let Some(var_ref) = VariableRef::from_value(self.path) {
-                resolver.resolve(var_ref.identifier())?
-            } else {
-                self.path.to_str()
-            }
-        });
+        if self.builtin {
+            Ok(PathBuf::from(self.name.clone()))
+        } else {
+            let path = PathBuf::from({
+                if let Some(formatter) = ValueFormatter::from_value(self.path) {
+                    formatter.fmt(resolver)?
+                } else if let Some(var_ref) = VariableRef::from_value(self.path) {
+                    resolver.resolve(var_ref.identifier())?
+                } else {
+                    self.path.to_str()
+                }
+            });
 
-        Ok({
-            if path.is_absolute() {
-                path
-            } else {
-                let mut new_path = working_dir.clone();
-                new_path.push(path);
-                new_path
-            }
-        })
+            Ok({
+                if path.is_absolute() {
+                    path
+                } else {
+                    let mut new_path = working_dir.clone();
+                    new_path.push(path);
+                    new_path
+                }
+            })
+        }
     }
 
     pub fn is_builtin(&self) -> bool {
         self.builtin
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -93,6 +108,7 @@ impl<'v> Freeze for Tool<'v> {
         Ok(ToolGen {
             path: self.path.freeze(freezer)?,
             builtin: self.builtin.freeze(freezer)?,
+            name: self.name.freeze(freezer)?,
         })
     }
 }
@@ -148,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_path_based_tool_path_absolute() {
+    fn test_path_based_tool_real_path_absolute() {
         let mut env = assert_env();
         let module = env.module(
             "tool.star",
@@ -166,7 +182,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_validate_path_based_tool_path_absolute_fail() {
+    fn test_path_based_tool_real_path_absolute_fail() {
         let mut env = assert_env();
         let module = env.module(
             "tool.star",
@@ -180,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_path_based_tool_path_relative() {
+    fn test_path_based_tool_real_path_relative() {
         let mut env = assert_env();
         let module = env.module("tool.star", "v = 'test_data/foo.sh'");
 
@@ -196,5 +212,45 @@ mod tests {
                 .unwrap(),
             PathBuf::from(format!("{}/test_data/foo.sh", root))
         );
+    }
+
+    #[test]
+    fn test_builtin_tool_name_returns_name() {
+        let mut env = assert_env();
+        let module = env.module("tool.star", "t = builtin_tool(name= 'ls')");
+
+        // Use this approach so we can supply our own root
+        let t = module.get("t").unwrap();
+        let tool = Tool::from_value(t.value()).unwrap();
+        assert_eq!(tool.name(), "ls");
+    }
+
+    #[test]
+    fn test_builtin_tool_real_path() {
+        let mut env = assert_env();
+        let module = env.module("tool.star", "t = builtin_tool(name= 'ls')");
+
+        // Use this approach so we can supply our own root
+        let t = module.get("t").unwrap();
+        let tool = Tool::from_value(t.value()).unwrap();
+        assert_eq!(
+            //make sure we pass in a pathbuf to make sure the code uses the name
+            tool.real_path(&"".to_string(), &PathBuf::from("foo"))
+                .unwrap(),
+            which("ls").unwrap()
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_builtin_tool_real_path_fail() {
+        let mut env = assert_env();
+        let module = env.module("tool.star", "t = builtin_tool(name= '__INVALID_TOOL__')");
+
+        // Use this approach so we can supply our own root
+        let t = module.get("t").unwrap();
+        let tool = Tool::from_value(t.value()).unwrap();
+        tool.real_path(&"".to_string(), &PathBuf::default())
+            .unwrap();
     }
 }
