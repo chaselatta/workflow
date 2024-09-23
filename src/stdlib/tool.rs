@@ -1,4 +1,4 @@
-use crate::stdlib::{ValueFormatter, VariableRef};
+use crate::stdlib::variable_resolver::{string_from_value, VariableResolver};
 use allocative::Allocative;
 use starlark::coerce::Coerce;
 use starlark::starlark_complex_value;
@@ -16,8 +16,6 @@ use std::fmt;
 use std::fmt::Display;
 use std::path::PathBuf;
 use which::which;
-
-use super::variable_resolver::VariableResolver;
 
 pub(crate) fn tool_impl<'v>(path: Value<'v>) -> anyhow::Result<Tool<'v>> {
     Ok(Tool {
@@ -47,7 +45,8 @@ pub struct ToolGen<V> {
 }
 starlark_complex_value!(pub Tool);
 
-#[starlark_value(type = "tool")]
+pub const TOOL_TYPE: &str = "tool";
+#[starlark_value(type = TOOL_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ToolGen<V> where Self: ProvidesStaticType<'v> {}
 
 impl<'a> Tool<'a> {
@@ -71,15 +70,7 @@ impl<'a> Tool<'a> {
         if self.builtin {
             Ok(PathBuf::from(self.name.clone()))
         } else {
-            let path = PathBuf::from({
-                if let Some(formatter) = ValueFormatter::from_value(self.path) {
-                    formatter.fmt(resolver)?
-                } else if let Some(var_ref) = VariableRef::from_value(self.path) {
-                    resolver.resolve(var_ref.identifier())?
-                } else {
-                    self.path.to_str()
-                }
-            });
+            let path = PathBuf::from(string_from_value(self.path, resolver)?);
 
             Ok({
                 if path.is_absolute() {

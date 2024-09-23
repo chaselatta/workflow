@@ -1,3 +1,4 @@
+pub mod action;
 pub mod errors;
 pub mod format;
 pub mod legacy;
@@ -8,12 +9,15 @@ pub mod variable;
 pub mod variable_resolver;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
+pub use crate::stdlib::action::Action;
+use crate::stdlib::tool::{Tool, TOOL_TYPE};
 pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
-use crate::stdlib::tool::{builtin_tool_impl, tool_impl, Tool};
+use crate::stdlib::tool::{builtin_tool_impl, tool_impl};
 use crate::stdlib::variable::variable_impl;
+use action::action_impl;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
@@ -66,6 +70,14 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
     /// The builtin_tool definition
     fn builtin_tool<'v>(#[starlark(require = named)] name: &str) -> anyhow::Result<Tool<'v>> {
         builtin_tool_impl(name)
+    }
+
+    /// The action definition
+    fn action<'v>(
+        #[starlark(require = named)] tool: Value<'v>,
+        #[starlark(require = named)] args: Option<ListOf<'v, Value<'v>>>,
+    ) -> anyhow::Result<Action<'v>> {
+        action_impl(tool, args.map(|v| v.to_vec()).unwrap_or_default())
     }
 }
 
