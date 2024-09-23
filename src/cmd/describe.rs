@@ -2,12 +2,14 @@ use crate::cmd::{GlobalArgs, RunCommand};
 use crate::downcast_delegate_ref;
 use crate::runner::{Runner, WorkflowDelegate};
 use crate::stdlib::tool::Tool;
+use crate::stdlib::Action;
 use crate::stdlib::{VariableEntry, VariableRef};
 use ansi_term::Colour::{Cyan, Green, Red};
 use anyhow::bail;
 use clap::Args;
 use starlark::environment::Module;
 use starlark::eval::Evaluator;
+use starlark::values::FrozenStringValue;
 use std::cmp;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -186,36 +188,42 @@ impl RunCommand for DescribeArgs {
             let delegate = downcast_delegate_ref!(holder, WorkflowDelegate).unwrap();
             let working_dir = runner.working_dir();
 
-            //TODO: This is not very performant, We should iterate the globals once
-            // and then place them in their types.
-            print_header("Variables", column_width);
+            let mut vars: Vec<(FrozenStringValue, &VariableRef)> = Vec::new();
+            let mut tools: Vec<(FrozenStringValue, &Tool)> = Vec::new();
+            let mut actions: Vec<(FrozenStringValue, &Action)> = Vec::new();
+
             let names = module.names();
             for name in names {
                 if let Some(value) = module.get(&name) {
                     if let Some(entry) = VariableRef::from_value(value) {
-                        delegate
-                            .variable_store()
-                            .with_variable(entry.identifier(), |v| {
-                                print_variable_entry(&name, v);
-                            });
+                        vars.push((name, entry));
+                    } else if let Some(entry) = Tool::from_value(value) {
+                        tools.push((name, entry));
+                    } else if let Some(entry) = Action::from_value(value) {
+                        actions.push((name, entry));
                     }
                 }
+            }
+
+            print_header("Variables", column_width);
+            for (name, var) in vars {
+                delegate
+                    .variable_store()
+                    .with_variable(var.identifier(), |v| {
+                        print_variable_entry(&name, v);
+                    });
             }
 
             print_header("Tools", column_width);
-            let names = module.names();
-            for name in names {
-                if let Some(value) = module.get(&name) {
-                    if let Some(entry) = Tool::from_value(value) {
-                        print_tool(&name, &entry, &delegate, &working_dir);
-                    }
-                }
+            for (name, tool) in tools {
+                print_tool(&name, &tool, &delegate, &working_dir);
             }
 
-            // print_header("Tools", column_width);
-            // for t in snapshot.tools {
-            //     print_tool(&t);
-            // }
+            print_header("Actions", column_width);
+            for (name, action) in actions {
+                dbg!(&name);
+                dbg!(action);
+            }
         } else {
             bail!("Workflow does not exist at path {:?}", self.workflow);
         }

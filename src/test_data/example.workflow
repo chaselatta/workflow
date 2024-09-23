@@ -16,6 +16,10 @@ var_2 = variable(
 var_3 = variable(
 )
 
+name = variable(
+  cli_flag = "--name"
+)
+
 echo = builtin_tool(
  name = "echo",
 )
@@ -35,4 +39,20 @@ HOME = variable(
 
 orchestral = tool(
   path = format("{}/bin/orchestral", HOME),
+)
+
+say_hi = action(
+  tool = echo,
+  # args = [
+  #   "hello",
+  #   name,
+  # ]
+)
+
+say_bye = action(
+  tool = echo,
+  args = [
+    # format("hello, {}", name),
+    "abc",
+  ]
 )

@@ -1,10 +1,24 @@
 use crate::stdlib::format::ValueFormatter;
-
+use crate::stdlib::VariableRef;
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::values::ProvidesStaticType;
+use starlark::values::Value;
 use std::collections::HashMap;
 use thiserror::Error;
+
+pub fn string_from_value<V: VariableResolver>(
+    value: Value,
+    resolver: &V,
+) -> anyhow::Result<String> {
+    if let Some(formatter) = ValueFormatter::from_value(value) {
+        formatter.fmt(resolver)
+    } else if let Some(var_ref) = VariableRef::from_value(value) {
+        resolver.resolve(var_ref.identifier())
+    } else {
+        Ok(value.to_str())
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum VariableResolverError {
@@ -38,6 +52,12 @@ impl VariableResolver for HashMap<&str, &str> {
 impl VariableResolver for String {
     fn resolve(&self, _identifier: &str) -> anyhow::Result<String> {
         Ok(self.clone())
+    }
+}
+
+impl VariableResolver for &str {
+    fn resolve(&self, _identifier: &str) -> anyhow::Result<String> {
+        Ok(self.to_string())
     }
 }
 
