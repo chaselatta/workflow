@@ -16,13 +16,6 @@ var_2 = variable(
 var_3 = variable(
 )
 
-name = variable(
-  cli_flag = "--name"
-)
-
-echo = builtin_tool(
- name = "echo",
-)
 
 foo = tool(
   path = "foo.sh",
@@ -37,22 +30,29 @@ HOME = variable(
   env =  "HOME",
 )
 
-orchestral = tool(
-  path = format("{}/bin/orchestral", HOME),
+
+
+name = variable(
+  cli_flag = "--name"
 )
+
+echo = builtin_tool(
+ name = "echo",
+)
+
 
 say_hi = action(
   tool = echo,
-  # args = [
-  #   "hello",
-  #   name,
-  # ]
+  args = [
+    "hello",
+    name,
+  ]
 )
 
 say_bye = action(
   tool = echo,
   args = [
-    # format("hello, {}", name),
+    format("hello, {}", name),
     "abc",
   ]
 )

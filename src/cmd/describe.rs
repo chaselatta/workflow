@@ -169,6 +169,34 @@ fn print_tool(name: &str, tool: &Tool, delegate: &WorkflowDelegate, working_dir:
     println!("");
 }
 
+fn print_action(name: &str, action: &Action, delegate: &WorkflowDelegate, working_dir: &PathBuf) {
+    println!("{}: ", Cyan.paint(name.to_string()));
+    let records = vec![
+        AlignedRecord::new(
+            "program",
+            format_result(
+                action
+                    .command(delegate, working_dir)
+                    .map(|c| format!("{:?}", c.get_program())),
+            ),
+        ),
+        AlignedRecord::new(
+            "args",
+            format_result(action.arg_list(delegate).map(|l| format!("{:?}", l))),
+        ),
+    ];
+    let mut max = 0;
+    for r in &records {
+        max = cmp::max(max, r.size);
+    }
+
+    for record in &records {
+        println!("  - {}", record.display_with_size(max));
+    }
+
+    println!("");
+}
+
 impl RunCommand for DescribeArgs {
     fn run(&self, _global_args: &GlobalArgs) -> anyhow::Result<()> {
         if self.workflow.exists() {
@@ -221,8 +249,7 @@ impl RunCommand for DescribeArgs {
 
             print_header("Actions", column_width);
             for (name, action) in actions {
-                dbg!(&name);
-                dbg!(action);
+                print_action(&name, &action, &delegate, &working_dir);
             }
         } else {
             bail!("Workflow does not exist at path {:?}", self.workflow);
