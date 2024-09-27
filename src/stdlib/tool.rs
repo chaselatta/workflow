@@ -1,4 +1,5 @@
 use crate::stdlib::variable_resolver::{string_from_value, VariableResolver};
+use crate::stdlib::TOOL_TYPE;
 use allocative::Allocative;
 use starlark::coerce::Coerce;
 use starlark::starlark_complex_value;
@@ -45,7 +46,6 @@ pub struct ToolGen<V> {
 }
 starlark_complex_value!(pub Tool);
 
-pub const TOOL_TYPE: &str = "tool";
 #[starlark_value(type = TOOL_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ToolGen<V> where Self: ProvidesStaticType<'v> {}
 

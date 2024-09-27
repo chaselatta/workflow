@@ -1,4 +1,6 @@
+use crate::stdlib::{NODE_TYPE, WORKFLOW_TYPE};
 use allocative::Allocative;
+use anyhow::bail;
 use starlark::coerce::Coerce;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
@@ -18,6 +20,12 @@ pub(crate) fn workflow_impl<'v>(
     entrypoint: &str,
     graph: Vec<Value<'v>>,
 ) -> anyhow::Result<Workflow<'v>> {
+    for node in &graph {
+        if node.get_type() != NODE_TYPE {
+            bail!("graph can only contain node values")
+        }
+    }
+
     Ok(Workflow {
         entrypoint: entrypoint.to_string(),
         graph: graph,
@@ -34,7 +42,7 @@ pub struct WorkflowGen<V> {
 }
 starlark_complex_value!(pub Workflow);
 
-#[starlark_value(type = "workflow")]
+#[starlark_value(type = WORKFLOW_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for WorkflowGen<V> where
     Self: ProvidesStaticType<'v>
 {
@@ -76,5 +84,36 @@ mod tests {
         let workflow = Workflow::from_value(workflow.value()).unwrap();
         assert_eq!(workflow.entrypoint, "e".to_string());
         assert_eq!(&workflow.graph, &vec![]);
+    }
+
+    #[test]
+    fn test_parse_graph_many_values() {
+        assert_env().pass(
+            r#"
+workflow(
+    entrypoint = "a",
+    graph = [
+        node(name = "a", action = action(tool = tool(path = ""))),
+        node(name = "b", action = action(tool = tool(path = ""))),
+        sequence(name = "c", actions = []),
+    ]
+)"#,
+        );
+    }
+
+    #[test]
+    fn test_graph_must_contain_nodes_only() {
+        assert_env().fail(
+            r#"
+workflow(
+    entrypoint = "a",
+    graph = [
+        node(name = "a", action = action(tool = tool(path = ""))),
+        1,
+        sequence(name = "c", actions = []),
+    ]
+)"#,
+            "graph can only contain node values",
+        );
     }
 }

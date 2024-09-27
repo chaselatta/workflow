@@ -1,6 +1,5 @@
 use crate::stdlib::variable_resolver::{string_from_value, VariableResolver};
-use crate::stdlib::Tool;
-use crate::stdlib::TOOL_TYPE;
+use crate::stdlib::{Tool, ACTION_TYPE, TOOL_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
@@ -40,8 +39,6 @@ pub struct ActionGen<V> {
     args: Vec<V>,
 }
 starlark_complex_value!(pub Action);
-
-pub const ACTION_TYPE: &str = "action";
 
 #[starlark_value(type = ACTION_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ActionGen<V> where Self: ProvidesStaticType<'v>
