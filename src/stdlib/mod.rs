@@ -7,11 +7,13 @@ pub mod parser;
 pub mod tool;
 pub mod variable;
 pub mod variable_resolver;
+pub mod workflow;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
 pub use crate::stdlib::action::Action;
 use crate::stdlib::tool::{Tool, TOOL_TYPE};
 pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
+pub use crate::stdlib::workflow::Workflow;
 
 use crate::stdlib::format::format_impl;
 use crate::stdlib::format::ValueFormatter;
@@ -24,6 +26,7 @@ use starlark::starlark_module;
 use starlark::values::list::ListOf;
 use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
+use workflow::workflow_impl;
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.
@@ -78,6 +81,14 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] args: Option<ListOf<'v, Value<'v>>>,
     ) -> anyhow::Result<Action<'v>> {
         action_impl(tool, args.map(|v| v.to_vec()).unwrap_or_default())
+    }
+
+    /// The workflow definition
+    fn workflow<'v>(
+        #[starlark(require = named)] entrypoint: Option<&str>,
+        #[starlark(require = named)] graph: ListOf<'v, Value<'v>>,
+    ) -> anyhow::Result<Workflow<'v>> {
+        workflow_impl(entrypoint.unwrap_or_default(), graph.to_vec())
     }
 }
 

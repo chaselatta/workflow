@@ -49,10 +49,16 @@ say_hi = action(
   ]
 )
 
+bark = action(
+  tool = echo,
+  args = [
+    "woof, woof",
+  ]
+)
+
 say_bye = action(
   tool = echo,
   args = [
-    format("hello, {}", name),
-    "abc",
+    format("goodbye, {}", name),
   ]
 )
