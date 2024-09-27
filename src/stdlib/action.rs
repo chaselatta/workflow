@@ -41,7 +41,9 @@ pub struct ActionGen<V> {
 }
 starlark_complex_value!(pub Action);
 
-#[starlark_value(type = "action")]
+pub const ACTION_TYPE: &str = "action";
+
+#[starlark_value(type = ACTION_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ActionGen<V> where Self: ProvidesStaticType<'v>
 {}
 
@@ -101,9 +103,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_require_a_tool() {
-        assert_env().pass("action(tool='tool')");
+        assert_env().fail(
+            "action(tool='tool')",
+            "A tool must be passed as the tool in an action",
+        );
     }
 
     #[test]
@@ -139,14 +143,10 @@ a = action(
 
     #[test]
     fn test_get_tool_path() {
-        // let exe = TempWorkflowFile::new_executable("foo.sh", "").unwrap();
-        // assert_env().pass("t = builtin_tool(path='ls'); action(tool=t, args = ['.'])");
-        let mut env = assert_env();
-        let module = env.module(
-            "action.star",
+        let res = assert_env().pass(
             r#"
 t = builtin_tool(name = "ls")
-a = action(
+action(
   tool = t,
   args = [
     ".",
@@ -154,8 +154,7 @@ a = action(
 )
 "#,
         );
-        let action = module.get("a").unwrap();
-        let action = Action::from_value(action.value()).unwrap();
+        let action = Action::from_value(res.value()).unwrap();
         let command = action.command(&"", &PathBuf::new()).unwrap();
 
         assert_eq!(command.get_program(), which("ls").unwrap());
