@@ -1,6 +1,7 @@
 pub mod action;
 pub mod errors;
 pub mod format;
+pub mod graph;
 pub mod legacy;
 pub mod parse_delegate;
 pub mod parser;
@@ -10,22 +11,24 @@ pub mod variable_resolver;
 pub mod workflow;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
-pub use crate::stdlib::action::Action;
+pub use crate::stdlib::action::{Action, ACTION_TYPE};
+pub use crate::stdlib::graph::Node;
 use crate::stdlib::tool::{Tool, TOOL_TYPE};
 pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
 pub use crate::stdlib::workflow::Workflow;
 
-use crate::stdlib::format::format_impl;
-use crate::stdlib::format::ValueFormatter;
-use crate::stdlib::tool::{builtin_tool_impl, tool_impl};
-use crate::stdlib::variable::variable_impl;
 use action::action_impl;
+use format::format_impl;
+use format::ValueFormatter;
+use graph::{node_impl, sequence_impl};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
 use starlark::values::list::ListOf;
 use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
+use tool::{builtin_tool_impl, tool_impl};
+use variable::variable_impl;
 use workflow::workflow_impl;
 
 /// A macro to downcast the delegate to an Option<T> without having
@@ -89,6 +92,22 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] graph: ListOf<'v, Value<'v>>,
     ) -> anyhow::Result<Workflow<'v>> {
         workflow_impl(entrypoint.unwrap_or_default(), graph.to_vec())
+    }
+
+    /// The node definition
+    fn node<'v>(
+        #[starlark(require = named)] name: Option<&str>,
+        #[starlark(require = named)] action: Value<'v>,
+    ) -> anyhow::Result<Node<'v>> {
+        node_impl(name.unwrap_or_default(), action)
+    }
+
+    /// The sequence definition
+    fn sequence<'v>(
+        #[starlark(require = named)] name: Option<&str>,
+        #[starlark(require = named)] actions: ListOf<'v, Value<'v>>,
+    ) -> anyhow::Result<Node<'v>> {
+        sequence_impl(name.unwrap_or_default(), actions.to_vec())
     }
 }
 

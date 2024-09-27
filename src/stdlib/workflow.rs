@@ -14,7 +14,10 @@ use starlark::StarlarkDocs;
 use std::fmt;
 use std::fmt::Display;
 
-pub(crate) fn workflow_impl<'v>(entrypoint: &str, graph: Vec<Value<'v>>) -> anyhow::Result<Workflow<'v>> {
+pub(crate) fn workflow_impl<'v>(
+    entrypoint: &str,
+    graph: Vec<Value<'v>>,
+) -> anyhow::Result<Workflow<'v>> {
     Ok(Workflow {
         entrypoint: entrypoint.to_string(),
         graph: graph,
@@ -67,11 +70,8 @@ mod tests {
 
     #[test]
     fn test_parse_sets_values() {
-      let mut env = assert_env();
-        let module = env.module(
-            "action.star",
-            "w = workflow(entrypoint = 'e', graph=[])",
-        );
+        let module: starlark::environment::FrozenModule =
+            assert_env().pass_module("w = workflow(entrypoint = 'e', graph=[])");
         let workflow = module.get("w").unwrap();
         let workflow = Workflow::from_value(workflow.value()).unwrap();
         assert_eq!(workflow.entrypoint, "e".to_string());
