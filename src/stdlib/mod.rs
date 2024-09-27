@@ -1,8 +1,8 @@
 pub mod action;
 pub mod errors;
 pub mod format;
-pub mod graph;
 pub mod legacy;
+pub mod node;
 pub mod parse_delegate;
 pub mod parser;
 pub mod tool;
@@ -11,16 +11,16 @@ pub mod variable_resolver;
 pub mod workflow;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
-pub use crate::stdlib::action::{Action, ACTION_TYPE};
-pub use crate::stdlib::graph::Node;
-use crate::stdlib::tool::{Tool, TOOL_TYPE};
+pub use crate::stdlib::action::Action;
+pub use crate::stdlib::node::Node;
+use crate::stdlib::tool::Tool;
 pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
 pub use crate::stdlib::workflow::Workflow;
 
 use action::action_impl;
 use format::format_impl;
 use format::ValueFormatter;
-use graph::{node_impl, sequence_impl};
+use node::{node_impl, sequence_impl};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
@@ -30,6 +30,13 @@ use starlark::values::Value;
 use tool::{builtin_tool_impl, tool_impl};
 use variable::variable_impl;
 use workflow::workflow_impl;
+
+pub const ACTION_TYPE: &str = "action";
+pub const WORKFLOW_TYPE: &str = "workflow";
+pub const NODE_TYPE: &str = "node";
+pub const VALUE_FORMATTER_TYPE: &str = "value_formatter";
+pub const TOOL_TYPE: &str = "tool";
+pub const VARIABLE_REF_TYPE: &str = "variable_ref";
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.

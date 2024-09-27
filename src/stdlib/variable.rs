@@ -1,5 +1,5 @@
 use crate::stdlib::errors::StdlibError;
-use crate::stdlib::ParseDelegateHolder;
+use crate::stdlib::{ParseDelegateHolder, VARIABLE_REF_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::eval::Evaluator;
@@ -40,7 +40,7 @@ pub struct VariableRef {
 }
 starlark_simple_value!(VariableRef);
 
-#[starlark_value(type = "variable_ref")]
+#[starlark_value(type = VARIABLE_REF_TYPE )]
 impl<'v> StarlarkValue<'v> for VariableRef {}
 
 impl fmt::Display for VariableRef {

@@ -1,6 +1,7 @@
 use crate::stdlib::variable::VariableRef;
 use crate::stdlib::variable_resolver::LateBoundString;
 use crate::stdlib::variable_resolver::VariableResolver;
+use crate::stdlib::VALUE_FORMATTER_TYPE;
 use allocative::Allocative;
 use starlark::starlark_simple_value;
 use starlark::values::starlark_value;
@@ -40,7 +41,7 @@ pub struct ValueFormatter {
 }
 starlark_simple_value!(ValueFormatter);
 
-#[starlark_value(type = "value_formatter")]
+#[starlark_value(type = VALUE_FORMATTER_TYPE)]
 impl<'v> StarlarkValue<'v> for ValueFormatter {}
 
 // fmt should take a trait like VariableResolver which takes an ID and returns the current value
