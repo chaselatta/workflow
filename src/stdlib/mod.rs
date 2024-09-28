@@ -24,11 +24,12 @@ use node::{node_impl, sequence_impl};
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
-use starlark::values::list::ListOf;
+use starlark::values::list::{ListOf, ListRef};
 use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
 use tool::{builtin_tool_impl, tool_impl};
 use variable::variable_impl;
+use variable_resolver::string_from_value;
 use workflow::workflow_impl;
 
 pub const ACTION_TYPE: &str = "action";
@@ -96,9 +97,15 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
     /// The workflow definition
     fn workflow<'v>(
         #[starlark(require = named)] entrypoint: Option<&str>,
-        #[starlark(require = named)] graph: ListOf<'v, Value<'v>>,
+        #[starlark(require = named)] graph: Value<'v>,
     ) -> anyhow::Result<Workflow<'v>> {
-        workflow_impl(entrypoint.unwrap_or_default(), graph.to_vec())
+        workflow_impl(entrypoint.unwrap_or_default(), {
+            if let Some(list_ref) = ListRef::from_value(graph) {
+                list_ref.to_vec()
+            } else {
+                vec![graph]
+            }
+        })
     }
 
     /// The node definition

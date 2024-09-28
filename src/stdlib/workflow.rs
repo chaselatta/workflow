@@ -116,4 +116,15 @@ workflow(
             "graph can only contain node values",
         );
     }
+
+    #[test]
+    fn test_graph_can_take_single_node() {
+        assert_env().pass(
+            r#"
+workflow(
+    entrypoint = "a",
+    graph = node(name = "a", action = action(tool = tool(path = ""))),
+)"#,
+        );
+    }
 }
