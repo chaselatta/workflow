@@ -1,3 +1,4 @@
+use crate::stdlib::Node;
 use crate::stdlib::{NODE_TYPE, WORKFLOW_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
@@ -15,14 +16,20 @@ use starlark::values::ValueLike;
 use starlark::StarlarkDocs;
 use std::fmt;
 use std::fmt::Display;
+use starlark::collections::SmallMap;
 
 pub(crate) fn workflow_impl<'v>(
     entrypoint: &str,
-    graph: Vec<Value<'v>>,
+    nodes: Vec<Value<'v>>,
 ) -> anyhow::Result<Workflow<'v>> {
-    for node in &graph {
+    let mut graph: SmallMap<String, Value<'_>> = SmallMap::new();
+    for node in &nodes {
         if node.get_type() != NODE_TYPE {
             bail!("graph can only contain node values")
+        }
+        let name =  Node::from_value(*node).expect("Should be a node").name().to_string();
+        if let Some(_) = graph.insert(name, *node) {
+            bail!("nodes must have unique names")
         }
     }
 
@@ -38,7 +45,7 @@ pub(crate) fn workflow_impl<'v>(
 #[repr(C)]
 pub struct WorkflowGen<V> {
     entrypoint: String,
-    graph: Vec<V>,
+    graph: SmallMap<String, V>,
 }
 starlark_complex_value!(pub Workflow);
 
@@ -48,7 +55,28 @@ impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for WorkflowGen<V> where
 {
 }
 
-impl<'a> Workflow<'a> {}
+impl<'a> Workflow<'a> {
+    pub fn first_node(&self) -> anyhow::Result<&Node<'a>> {
+        match self.graph.len() {
+            0 => bail!("Graph contains no nodes"),
+            1 => self.first_node_from_single_node_graph(),
+            _ => self.node_with_name(&self.entrypoint),
+        }
+    }
+
+    fn first_node_from_single_node_graph(&self) -> anyhow::Result<&Node<'a>> {
+        let value = self.graph.first().unwrap().1;
+        Ok(Node::from_value(*value).unwrap())
+    }
+
+    fn node_with_name(&self, name: &str) -> anyhow::Result<&Node<'a>> {
+        if let Some(value) = self.graph.get(name) {
+            Ok(Node::from_value(*value).unwrap())
+        } else {
+            bail!("No node with name: '{}'", name)
+        }
+    }
+}
 
 impl<'v> Freeze for Workflow<'v> {
     type Frozen = FrozenWorkflow;
@@ -83,7 +111,7 @@ mod tests {
         let workflow = module.get("w").unwrap();
         let workflow = Workflow::from_value(workflow.value()).unwrap();
         assert_eq!(workflow.entrypoint, "e".to_string());
-        assert_eq!(&workflow.graph, &vec![]);
+        assert_eq!(&workflow.graph, &SmallMap::new());
     }
 
     #[test]
@@ -98,6 +126,21 @@ workflow(
         sequence(name = "c", actions = []),
     ]
 )"#,
+        );
+    }
+
+    #[test]
+    fn test_graph_must_contain_unique_names() {
+        assert_env().fail(
+            r#"
+workflow(
+    entrypoint = "a",
+    graph = [
+        node(name = "a", action = action(tool = tool(path = ""))),
+        sequence(name = "a", actions = []),
+    ]
+)"#,
+            "nodes must have unique names",
         );
     }
 
@@ -126,5 +169,35 @@ workflow(
     graph = node(name = "a", action = action(tool = tool(path = ""))),
 )"#,
         );
+    }
+
+    #[test]
+    fn test_entry_point_single_node() {
+        let res = assert_env().pass(
+            r#"
+workflow(
+    graph = node(name = "a", action = action(tool = tool(path = ""))),
+)"#,
+        );
+        let workflow = Workflow::from_value(res.value()).unwrap();
+        let first_node = workflow.first_node().unwrap();
+        assert_eq!(first_node.name(), "a");
+    }
+
+    #[test]
+    fn test_entry_point_multi_node() {
+        let res = assert_env().pass(
+            r#"
+workflow(
+    entrypoint = "b",
+    graph = [
+      node(name = "a", action = action(tool = tool(path = ""))),
+      node(name = "b", action = action(tool = tool(path = ""))),
+    ],
+)"#,
+        );
+        let workflow = Workflow::from_value(res.value()).unwrap();
+        let first_node = workflow.first_node().unwrap();
+        assert_eq!(first_node.name(), "b");
     }
 }

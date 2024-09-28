@@ -29,7 +29,6 @@ use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
 use tool::{builtin_tool_impl, tool_impl};
 use variable::variable_impl;
-use variable_resolver::string_from_value;
 use workflow::workflow_impl;
 
 pub const ACTION_TYPE: &str = "action";
