@@ -53,7 +53,11 @@ starlark_complex_value!(pub Node);
 #[starlark_value(type = NODE_TYPE)]
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for NodeGen<V> where Self: ProvidesStaticType<'v> {}
 
-impl<'a> Node<'a> {}
+impl<'a> Node<'a> {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
 
 impl<'v> Freeze for Node<'v> {
     type Frozen = FrozenNode;
@@ -93,7 +97,7 @@ mod tests {
     fn test_set_name() {
         let res = assert_env().pass("node(name = 'foo', action = action(tool = tool(path='')))");
         let node = Node::from_value(res.value()).unwrap();
-        assert_eq!(node.name, "foo".to_string());
+        assert_eq!(node.name(), "foo");
     }
 
     #[test]
