@@ -31,7 +31,6 @@ HOME = variable(
 )
 
 
-
 name = variable(
   cli_flag = "--name"
 )
@@ -60,5 +59,19 @@ say_bye = action(
   tool = echo,
   args = [
     format("goodbye, {}", name),
+  ]
+)
+
+main = workflow(
+  entrypoint = "hi",
+  graph = [
+    sequence(
+      name = "hi",
+      actions = [
+        say_hi,
+        bark,
+        say_bye
+      ]
+    )
   ]
 )

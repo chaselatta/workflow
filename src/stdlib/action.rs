@@ -14,10 +14,14 @@ use starlark::values::Trace;
 use starlark::values::Value;
 use starlark::values::ValueLike;
 use starlark::StarlarkDocs;
-use std::fmt;
 use std::fmt::Display;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
+use std::{fmt, io};
 
 pub(crate) fn action_impl<'v>(tool: Value<'v>, args: Vec<Value<'v>>) -> anyhow::Result<Action<'v>> {
     if tool.get_type() != TOOL_TYPE {
@@ -68,6 +72,60 @@ impl<'a> Action<'a> {
         }
 
         Ok(cmd)
+    }
+
+    pub fn run<T: VariableResolver>(
+        &self,
+        resolver: &T,
+        working_dir: &PathBuf,
+    ) -> anyhow::Result<()> {
+        println!("Running an action");
+
+        let mut cmd = self.command(resolver, working_dir)?;
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // TODO: Clean this up.
+        let mut output_stdout = Vec::new();
+        let mut output_stderr = Vec::new();
+
+        let stdout = child.stdout.as_mut().expect("Wasn't stdout");
+        let stderr = child.stderr.as_mut().expect("Wasn't stderr");
+
+        let mut stdout = BufReader::new(stdout);
+        let mut stderr = BufReader::new(stderr);
+
+        loop {
+            let (stdout_bytes, stderr_bytes) = match (stdout.fill_buf(), stderr.fill_buf()) {
+                (Ok(stdout), Ok(stderr)) => {
+                    output_stdout.write_all(stdout).expect("Couldn't write");
+                    output_stderr.write_all(stderr).expect("Couldn't write");
+
+                    // TODO: add `quiet` to action and check that before we print
+                    io::stdout().write_all(stdout).expect("foo");
+                    io::stderr().write_all(stderr).expect("foo");
+                    (stdout.len(), stderr.len())
+                }
+                other => panic!("Some better error handling here... {:?}", other),
+            };
+            if stdout_bytes == 0 && stderr_bytes == 0 {
+                break;
+            }
+
+            stdout.consume(stdout_bytes);
+            stderr.consume(stderr_bytes);
+        }
+
+        let status = child.wait().expect("Waiting for child failed");
+        println!("Finished with status {:?}", status);
+        println!("stdout after: {:?}", std::str::from_utf8(&output_stdout));
+        println!("stderr after: {:?}", std::str::from_utf8(&output_stderr));
+
+        // run the command then call the variable updater function
+        Ok(())
     }
 }
 

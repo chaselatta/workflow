@@ -1,8 +1,10 @@
+use crate::stdlib::variable_resolver::VariableResolver;
 use crate::stdlib::Node;
 use crate::stdlib::{NODE_TYPE, WORKFLOW_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
+use starlark::collections::SmallMap;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -16,7 +18,7 @@ use starlark::values::ValueLike;
 use starlark::StarlarkDocs;
 use std::fmt;
 use std::fmt::Display;
-use starlark::collections::SmallMap;
+use std::path::PathBuf;
 
 pub(crate) fn workflow_impl<'v>(
     entrypoint: &str,
@@ -27,7 +29,10 @@ pub(crate) fn workflow_impl<'v>(
         if node.get_type() != NODE_TYPE {
             bail!("graph can only contain node values")
         }
-        let name =  Node::from_value(*node).expect("Should be a node").name().to_string();
+        let name = Node::from_value(*node)
+            .expect("Should be a node")
+            .name()
+            .to_string();
         if let Some(_) = graph.insert(name, *node) {
             bail!("nodes must have unique names")
         }
@@ -75,6 +80,16 @@ impl<'a> Workflow<'a> {
         } else {
             bail!("No node with name: '{}'", name)
         }
+    }
+
+    pub fn run<T: VariableResolver>(
+        &self,
+        resolver: &T,
+        working_dir: &PathBuf,
+    ) -> anyhow::Result<()> {
+        let node = self.first_node()?;
+        node.run(resolver, working_dir)?;
+        Ok(())
     }
 }
 
