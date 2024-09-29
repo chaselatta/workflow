@@ -15,7 +15,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 
 pub struct Runner {
-    globals: Globals,
+    pub globals: Globals,
     delegate: ParseDelegateHolder,
     workflow_file: PathBuf,
 }

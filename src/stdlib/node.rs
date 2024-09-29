@@ -1,3 +1,4 @@
+use crate::stdlib::variable_resolver::VariableResolver;
 use crate::stdlib::{ACTION_TYPE, NODE_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
@@ -15,6 +16,9 @@ use starlark::values::ValueLike;
 use starlark::StarlarkDocs;
 use std::fmt;
 use std::fmt::Display;
+use std::path::PathBuf;
+
+use super::Action;
 
 pub(crate) fn node_impl<'v>(name: &str, action: Value<'v>) -> anyhow::Result<Node<'v>> {
     if action.get_type() != ACTION_TYPE {
@@ -56,6 +60,18 @@ impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for NodeGen<V> where Self: Pro
 impl<'a> Node<'a> {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn run<T: VariableResolver>(
+        &self,
+        resolver: &T,
+        working_dir: &PathBuf,
+    ) -> anyhow::Result<()> {
+        for value in self.actions.clone() {
+            let action = Action::from_value(value).unwrap();
+            action.run(resolver, working_dir)?;
+        }
+        Ok(())
     }
 }
 
