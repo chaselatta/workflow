@@ -5,14 +5,16 @@ pub mod legacy;
 pub mod node;
 pub mod parse_delegate;
 pub mod parser;
+pub mod setter;
 pub mod tool;
 pub mod variable;
-pub mod variable_resolver;
 pub mod workflow;
+pub mod variable_resolver;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
 pub use crate::stdlib::action::Action;
 pub use crate::stdlib::node::Node;
+use crate::stdlib::setter::Setter;
 use crate::stdlib::tool::Tool;
 pub use crate::stdlib::variable::{ValueContext, ValueUpdatedBy, VariableEntry, VariableRef};
 pub use crate::stdlib::workflow::Workflow;
@@ -21,6 +23,7 @@ use action::action_impl;
 use format::format_impl;
 use format::ValueFormatter;
 use node::{node_impl, sequence_impl};
+use setter::setter_impl;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
@@ -37,6 +40,7 @@ pub const NODE_TYPE: &str = "node";
 pub const VALUE_FORMATTER_TYPE: &str = "value_formatter";
 pub const TOOL_TYPE: &str = "tool";
 pub const VARIABLE_REF_TYPE: &str = "variable_ref";
+pub const SETTER_TYPE: &str = "setter";
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.
@@ -121,6 +125,14 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] actions: ListOf<'v, Value<'v>>,
     ) -> anyhow::Result<Node<'v>> {
         sequence_impl(name.unwrap_or_default(), actions.to_vec())
+    }
+
+    /// The setter definition
+    fn setter<'v>(
+        #[starlark(require = named)] implementation: Value<'v>,
+        #[starlark(require = named)] variable: Value<'v>,
+    ) -> anyhow::Result<Setter<'v>> {
+        setter_impl(implementation, variable)
     }
 }
 

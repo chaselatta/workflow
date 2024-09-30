@@ -1,5 +1,5 @@
 use crate::stdlib::variable_resolver::VariableResolver;
-use crate::stdlib::{ACTION_TYPE, NODE_TYPE};
+use crate::stdlib::{Action, ACTION_TYPE, NODE_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
@@ -17,8 +17,6 @@ use starlark::StarlarkDocs;
 use std::fmt;
 use std::fmt::Display;
 use std::path::PathBuf;
-
-use super::Action;
 
 pub(crate) fn node_impl<'v>(name: &str, action: Value<'v>) -> anyhow::Result<Node<'v>> {
     if action.get_type() != ACTION_TYPE {
