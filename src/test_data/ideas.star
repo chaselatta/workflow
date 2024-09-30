@@ -72,6 +72,11 @@ single_node_workflow = workflow(
 
 single_sequence_workflow = workflow(
   # There is a single node in the graph so we don't need an entrypoint
+  
+  # TODO: figure out if a sequence has a next option. How will we deal
+  # with the next value if there are a bunch of actions that run. We probably
+  # can't do a next for sequences because of this. 
+  # Could just use the results from the last action
   graph = sequence(
       actions = [
         say_hi,
