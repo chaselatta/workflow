@@ -1,7 +1,10 @@
+use super::variable_resolver::VariableUpdater;
+use crate::stdlib::VariableRef;
 use crate::stdlib::{SETTER_TYPE, VARIABLE_REF_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
+use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -46,7 +49,19 @@ starlark_complex_value!(pub Setter);
 impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for SetterGen<V> where Self: ProvidesStaticType<'v>
 {}
 
-impl<'a> Setter<'a> {}
+impl<'v> Setter<'v> {
+    pub fn implementation(&self) -> Value<'v> {
+        self.implementation.clone()
+    }
+
+    pub fn variable_identifier(&self) -> &str {
+        // self.variable.
+        self.variable
+            .downcast_ref::<VariableRef>()
+            .map(|v| v.identifier())
+            .unwrap_or("")
+    }
+}
 
 impl<'v> Freeze for Setter<'v> {
     type Frozen = FrozenSetter;
@@ -82,7 +97,8 @@ v_setter = setter(
   implementation = _foo_impl,
   variable = v
 )
-"#);
+"#,
+        );
     }
 
     #[test]
@@ -96,7 +112,9 @@ v_setter = setter(
   implementation = _foo_impl,
   variable = "v"
 )
-"#, "expected variable type in setter definition");
+"#,
+            "expected variable type in setter definition",
+        );
     }
 
     #[test]
@@ -107,6 +125,8 @@ setter(
   implementation = "_foo_impl",
   variable = variable(),
 )
-"#, "expected function type in setter definition");
+"#,
+            "expected function type in setter definition",
+        );
     }
 }

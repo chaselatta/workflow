@@ -1,8 +1,10 @@
 use crate::stdlib::variable_resolver::VariableResolver;
+use crate::stdlib::variable_resolver::VariableUpdater;
 use crate::stdlib::{Action, ACTION_TYPE, NODE_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
+use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -60,14 +62,15 @@ impl<'a> Node<'a> {
         &self.name
     }
 
-    pub fn run<T: VariableResolver>(
+    pub fn run<T: VariableResolver + VariableUpdater>(
         &self,
         resolver: &T,
         working_dir: &PathBuf,
+        eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<()> {
         for value in self.actions.clone() {
             let action = Action::from_value(value).unwrap();
-            action.run(resolver, working_dir)?;
+            action.run(resolver, working_dir, eval)?;
         }
         Ok(())
     }

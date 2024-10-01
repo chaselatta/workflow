@@ -1,6 +1,8 @@
 use super::VariableStore;
 use crate::stdlib::variable_resolver::VariableResolver;
+use crate::stdlib::variable_resolver::VariableUpdater;
 use crate::stdlib::ParseDelegate;
+use crate::stdlib::ValueUpdatedBy;
 use crate::stdlib::VariableEntry;
 use anyhow::bail;
 use std::cell::RefCell;
@@ -55,6 +57,17 @@ impl VariableResolver for WorkflowDelegate {
             Some(v) => Ok(v),
             None => bail!("No value for variable"),
         }
+    }
+}
+
+impl VariableUpdater for WorkflowDelegate {
+    fn update(&self, identifier: &str, value: String) -> anyhow::Result<()> {
+        self.variable_store.update_variable_value(
+            identifier,
+            value,
+            ValueUpdatedBy::Action("".to_string()),
+        );
+        Ok(())
     }
 }
 

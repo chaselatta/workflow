@@ -1,8 +1,11 @@
+use crate::stdlib::variable_resolver::VariableUpdater;
 use crate::stdlib::variable_resolver::{string_from_value, VariableResolver};
+use crate::stdlib::Setter;
 use crate::stdlib::{Tool, ACTION_TYPE, TOOL_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
+use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -23,7 +26,11 @@ use std::process::Command;
 use std::process::Stdio;
 use std::{fmt, io};
 
-pub(crate) fn action_impl<'v>(tool: Value<'v>, args: Vec<Value<'v>>) -> anyhow::Result<Action<'v>> {
+pub(crate) fn action_impl<'v>(
+    tool: Value<'v>,
+    args: Vec<Value<'v>>,
+    setters: Vec<Value<'v>>,
+) -> anyhow::Result<Action<'v>> {
     if tool.get_type() != TOOL_TYPE {
         bail!("A tool must be passed as the tool in an action")
     }
@@ -31,6 +38,7 @@ pub(crate) fn action_impl<'v>(tool: Value<'v>, args: Vec<Value<'v>>) -> anyhow::
     Ok(Action {
         tool: tool,
         args: args,
+        setters: setters,
     })
 }
 
@@ -41,6 +49,7 @@ pub(crate) fn action_impl<'v>(tool: Value<'v>, args: Vec<Value<'v>>) -> anyhow::
 pub struct ActionGen<V> {
     tool: V,
     args: Vec<V>,
+    setters: Vec<V>,
 }
 starlark_complex_value!(pub Action);
 
@@ -49,7 +58,7 @@ impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ActionGen<V> where Self: P
 {}
 
 impl<'a> Action<'a> {
-    pub fn arg_list<T: VariableResolver>(&self, resolver: &T) -> anyhow::Result<Vec<String>> {
+    pub fn arg_list<T: VariableResolver>(&self, resolver: & T) -> anyhow::Result<Vec<String>> {
         let mut args_list: Vec<String> = Vec::new();
         for v in self.args.clone() {
             let r = string_from_value(v, resolver)?;
@@ -74,10 +83,11 @@ impl<'a> Action<'a> {
         Ok(cmd)
     }
 
-    pub fn run<T: VariableResolver>(
+    pub fn run<T: VariableResolver + VariableUpdater>(
         &self,
         resolver: &T,
         working_dir: &PathBuf,
+        eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<()> {
         println!("Running an action");
 
@@ -124,6 +134,31 @@ impl<'a> Action<'a> {
         println!("stdout after: {:?}", std::str::from_utf8(&output_stdout));
         println!("stderr after: {:?}", std::str::from_utf8(&output_stderr));
 
+        //         let res = eval2
+        // +                    // .eval_function(module.get("foo_bar").unwrap(), &[], &[])
+        // +                    .eval_function(z.f(), &[], &[])
+        // +                    .unwrap();
+
+        // TODO: we only need to collect the ActionCtx if there are next
+        // nodes or variable setters.
+        // let ctx = ActionCtx::new();
+        for setter in self.setters.clone() {
+            if let Some(setter) = Setter::from_value(setter) {
+                let res = eval
+                    .eval_function(setter.implementation(), &[], &[])
+                    .map_err(|e| e.into_anyhow())?;
+
+                if res.get_type() == "string" {
+                    resolver.update(setter.variable_identifier(), res.to_str());
+                } else if res.get_type() != "NoneType" {
+                    // None means don't update
+                    // TODO: Error out if not None or string
+                } else {
+                    
+                }
+            }
+        }
+
         // run the command then call the variable updater function
         Ok(())
     }
@@ -135,6 +170,7 @@ impl<'v> Freeze for Action<'v> {
         Ok(ActionGen {
             tool: self.tool.freeze(freezer)?,
             args: self.args.freeze(freezer)?,
+            setters: self.setters.freeze(freezer)?,
         })
     }
 }
@@ -217,4 +253,34 @@ action(
         let args: Vec<&OsStr> = command.get_args().collect();
         assert_eq!(args, &["."]);
     }
+
+    //         #[test]
+    //         fn test_setters_run_and_update() {
+    //             let mut env = assert_env();
+    //         let module = env.module(
+    //             "action.star",
+    //             r#"
+    // v = variable()
+    // def _update(ctx):
+    //     return "foo"
+
+    // a = action(
+    //     tool = builtin_tool(name = "ls"),
+    //     args = [
+    //     ".",
+    //     ],
+    //     setters = [
+    //     setter(
+    //         implementation = _update,
+    //         variable = v,
+    //     )
+    //     ]
+    // )
+    //     "#);
+    //         let action = module.get("a").unwrap();
+    //         let action = Action::from_value(action.value()).unwrap();
+
+    //         let eval = Evaluator::new(&module);
+    //         action.run(resolver, working_dir, &eval).unwarp();
+    //         }
 }

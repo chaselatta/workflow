@@ -8,8 +8,8 @@ pub mod parser;
 pub mod setter;
 pub mod tool;
 pub mod variable;
-pub mod workflow;
 pub mod variable_resolver;
+pub mod workflow;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
 pub use crate::stdlib::action::Action;
@@ -93,8 +93,13 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
     fn action<'v>(
         #[starlark(require = named)] tool: Value<'v>,
         #[starlark(require = named)] args: Option<ListOf<'v, Value<'v>>>,
+        #[starlark(require = named)] setters: Option<ListOf<'v, Value<'v>>>,
     ) -> anyhow::Result<Action<'v>> {
-        action_impl(tool, args.map(|v| v.to_vec()).unwrap_or_default())
+        action_impl(
+            tool,
+            args.map(|v| v.to_vec()).unwrap_or_default(),
+            setters.map(|v| v.to_vec()).unwrap_or_default(),
+        )
     }
 
     /// The workflow definition

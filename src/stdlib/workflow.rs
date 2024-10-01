@@ -1,10 +1,12 @@
 use crate::stdlib::variable_resolver::VariableResolver;
+use crate::stdlib::variable_resolver::VariableUpdater;
 use crate::stdlib::Node;
 use crate::stdlib::{NODE_TYPE, WORKFLOW_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
 use starlark::collections::SmallMap;
+use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -82,13 +84,14 @@ impl<'a> Workflow<'a> {
         }
     }
 
-    pub fn run<T: VariableResolver>(
+    pub fn run<T: VariableResolver + VariableUpdater>(
         &self,
         resolver: &T,
         working_dir: &PathBuf,
+        eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<()> {
         let node = self.first_node()?;
-        node.run(resolver, working_dir)?;
+        node.run(resolver, working_dir, eval)?;
         Ok(())
     }
 }

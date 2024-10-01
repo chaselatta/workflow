@@ -39,12 +39,20 @@ echo = builtin_tool(
  name = "echo",
 )
 
+def _name_updater():
+  return "NEW NAME"
 
 say_hi = action(
   tool = echo,
   args = [
     "hello",
     name,
+  ],
+  setters = [
+    setter(
+      implementation = _name_updater,
+      variable = name,
+    )
   ]
 )
 
