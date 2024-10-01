@@ -38,7 +38,7 @@ impl RunCommand for RunArgs {
             // TOOD: add run_workflow function instead of looking for main
             if let Some(main) = module.get("main") {
                 let workflow = Workflow::from_value(main).unwrap();
-                let _ = workflow.run(delegate, &working_dir);
+                let _ = workflow.run(delegate, &working_dir, &mut eval);
             }
         } else {
             bail!("Workflow does not exist at path {:?}", self.workflow);

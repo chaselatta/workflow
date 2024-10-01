@@ -61,6 +61,10 @@ impl VariableResolver for &str {
     }
 }
 
+pub trait VariableUpdater {
+    fn update(&self, identifier: &str, value: String) -> anyhow::Result<()>;
+}
+
 #[derive(Debug, ProvidesStaticType, Allocative, Clone)]
 enum OneOf {
     Value(String),
