@@ -1,10 +1,8 @@
-use super::variable_resolver::VariableUpdater;
 use crate::stdlib::VariableRef;
 use crate::stdlib::{SETTER_TYPE, VARIABLE_REF_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
-use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
@@ -81,7 +79,7 @@ impl<V> Display for SetterGen<V> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use crate::stdlib::test_utils::assert_env;
 
     #[test]

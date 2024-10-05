@@ -39,8 +39,8 @@ echo = builtin_tool(
  name = "echo",
 )
 
-def _name_updater():
-  return "NEW NAME"
+def _name_updater(ctx):
+  return ctx.stdout + ctx.stderr + str(ctx.exit_code)
 
 say_hi = action(
   tool = echo,

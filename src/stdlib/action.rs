@@ -1,12 +1,17 @@
 use crate::stdlib::variable_resolver::VariableUpdater;
 use crate::stdlib::variable_resolver::{string_from_value, VariableResolver};
 use crate::stdlib::Setter;
-use crate::stdlib::{Tool, ACTION_TYPE, TOOL_TYPE};
+use crate::stdlib::{Tool, ACTION_CTX_TYPE, ACTION_TYPE, TOOL_TYPE};
 use allocative::Allocative;
 use anyhow::bail;
 use starlark::coerce::Coerce;
+use starlark::environment::Methods;
+use starlark::environment::MethodsBuilder;
+use starlark::environment::MethodsStatic;
 use starlark::eval::Evaluator;
 use starlark::starlark_complex_value;
+use starlark::starlark_module;
+use starlark::starlark_simple_value;
 use starlark::values::starlark_value;
 use starlark::values::Freeze;
 use starlark::values::Freezer;
@@ -14,6 +19,7 @@ use starlark::values::NoSerialize;
 use starlark::values::ProvidesStaticType;
 use starlark::values::StarlarkValue;
 use starlark::values::Trace;
+use starlark::values::UnpackValue;
 use starlark::values::Value;
 use starlark::values::ValueLike;
 use starlark::StarlarkDocs;
@@ -21,9 +27,10 @@ use std::fmt::Display;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
+use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
-use std::process::Command;
 use std::process::Stdio;
+use std::process::{Command, ExitStatus};
 use std::{fmt, io};
 
 pub(crate) fn action_impl<'v>(
@@ -58,7 +65,7 @@ impl<'v, V: ValueLike<'v> + 'v> StarlarkValue<'v> for ActionGen<V> where Self: P
 {}
 
 impl<'a> Action<'a> {
-    pub fn arg_list<T: VariableResolver>(&self, resolver: & T) -> anyhow::Result<Vec<String>> {
+    pub fn arg_list<T: VariableResolver>(&self, resolver: &T) -> anyhow::Result<Vec<String>> {
         let mut args_list: Vec<String> = Vec::new();
         for v in self.args.clone() {
             let r = string_from_value(v, resolver)?;
@@ -89,8 +96,7 @@ impl<'a> Action<'a> {
         working_dir: &PathBuf,
         eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<()> {
-        println!("Running an action");
-
+        println!("RUNNING ACTION");
         let mut cmd = self.command(resolver, working_dir)?;
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -98,21 +104,22 @@ impl<'a> Action<'a> {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        // TODO: Clean this up.
-        let mut output_stdout = Vec::new();
-        let mut output_stderr = Vec::new();
+        let needs_action_ctx = self.setters.len() > 0;
+        let mut output_collector = OutputCollector::new(needs_action_ctx);
 
-        let stdout = child.stdout.as_mut().expect("Wasn't stdout");
-        let stderr = child.stderr.as_mut().expect("Wasn't stderr");
-
-        let mut stdout = BufReader::new(stdout);
-        let mut stderr = BufReader::new(stderr);
+        let (mut stdout, mut stderr) = {
+            match (child.stdout.as_mut(), child.stderr.as_mut()) {
+                (Some(child_stdout), Some(child_stderr)) => {
+                    (BufReader::new(child_stdout), BufReader::new(child_stderr))
+                }
+                _ => bail!("Could not create stdout/stderr"),
+            }
+        };
 
         loop {
             let (stdout_bytes, stderr_bytes) = match (stdout.fill_buf(), stderr.fill_buf()) {
                 (Ok(stdout), Ok(stderr)) => {
-                    output_stdout.write_all(stdout).expect("Couldn't write");
-                    output_stderr.write_all(stderr).expect("Couldn't write");
+                    output_collector.collect(stdout, stderr)?;
 
                     // TODO: add `quiet` to action and check that before we print
                     io::stdout().write_all(stdout).expect("foo");
@@ -130,31 +137,26 @@ impl<'a> Action<'a> {
         }
 
         let status = child.wait().expect("Waiting for child failed");
-        println!("Finished with status {:?}", status);
-        println!("stdout after: {:?}", std::str::from_utf8(&output_stdout));
-        println!("stderr after: {:?}", std::str::from_utf8(&output_stderr));
 
-        //         let res = eval2
-        // +                    // .eval_function(module.get("foo_bar").unwrap(), &[], &[])
-        // +                    .eval_function(z.f(), &[], &[])
-        // +                    .unwrap();
+        let heap = eval.module().heap();
+        let ctx = heap.alloc(ActionCtx::new(
+            output_collector.stdout()?,
+            output_collector.stderr()?,
+            status,
+        ));
 
-        // TODO: we only need to collect the ActionCtx if there are next
-        // nodes or variable setters.
-        // let ctx = ActionCtx::new();
         for setter in self.setters.clone() {
             if let Some(setter) = Setter::from_value(setter) {
-                let res = eval
-                    .eval_function(setter.implementation(), &[], &[])
-                    .map_err(|e| e.into_anyhow())?;
-
-                if res.get_type() == "string" {
-                    resolver.update(setter.variable_identifier(), res.to_str());
-                } else if res.get_type() != "NoneType" {
-                    // None means don't update
-                    // TODO: Error out if not None or string
-                } else {
-                    
+                match eval.eval_function(setter.implementation(), &[ctx], &[]) {
+                    Ok(res) => {
+                        if res.get_type() == "string" {
+                            let _ = resolver.update(setter.variable_identifier(), res.to_str());
+                        } else if res.get_type() != "NoneType" {
+                            // None means don't update
+                            bail!("setter must return string or None")
+                        }
+                    }
+                    Err(e) => bail!(e.into_anyhow()),
                 }
             }
         }
@@ -181,12 +183,121 @@ impl<V> Display for ActionGen<V> {
     }
 }
 
+//
+// -- ActionCtx
+//
+#[derive(Debug, ProvidesStaticType, NoSerialize, Allocative, Clone)]
+pub struct ActionCtx {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+}
+starlark_simple_value!(ActionCtx);
+
+#[starlark_value(type = ACTION_CTX_TYPE )]
+impl<'v> StarlarkValue<'v> for ActionCtx {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new();
+        RES.methods(action_ctx_methods)
+    }
+}
+
+impl<'v> UnpackValue<'v> for ActionCtx {
+    fn unpack_value(value: Value<'v>) -> Option<Self> {
+        ActionCtx::from_value(value).map(|v| v.clone())
+    }
+}
+
+#[starlark_module]
+fn action_ctx_methods(builder: &mut MethodsBuilder) {
+    #[starlark(attribute)]
+    fn stdout(this: ActionCtx) -> anyhow::Result<String> {
+        Ok(this.stdout)
+    }
+
+    #[starlark(attribute)]
+    fn stderr(this: ActionCtx) -> anyhow::Result<String> {
+        Ok(this.stderr)
+    }
+
+    #[starlark(attribute)]
+    fn exit_code(this: ActionCtx) -> anyhow::Result<i32> {
+        Ok(this.exit_code)
+    }
+}
+
+impl fmt::Display for ActionCtx {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "action_ctx")
+    }
+}
+
+impl ActionCtx {
+    fn new(stdout: String, stderr: String, status: ExitStatus) -> Self {
+        ActionCtx {
+            stdout: stdout,
+            stderr: stderr,
+            exit_code: status.code().or(status.signal()).unwrap_or(-1),
+        }
+    }
+}
+
+struct OutputCollector {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    should_collect: bool,
+}
+
+impl OutputCollector {
+    fn new(should_collect: bool) -> Self {
+        OutputCollector {
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            should_collect: should_collect,
+        }
+    }
+
+    fn collect(&mut self, buf_stdout: &[u8], buf_stderr: &[u8]) -> anyhow::Result<()> {
+        if self.should_collect {
+            self.stdout.write_all(buf_stdout)?;
+            self.stderr.write_all(buf_stderr)?;
+        }
+        Ok(())
+    }
+
+    fn stdout(&self) -> anyhow::Result<String> {
+        Ok(std::str::from_utf8(&self.stdout).map(|v| v.to_string())?)
+    }
+
+    fn stderr(&self) -> anyhow::Result<String> {
+        Ok(std::str::from_utf8(&self.stderr).map(|v| v.to_string())?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::stdlib::test_utils::assert_env;
     use std::ffi::OsStr;
     use which::which;
+
+    #[test]
+    fn test_output_collector() {
+        let mut collector = OutputCollector::new(true);
+        let res = collector.collect(&[104, 101, 108, 108, 111], b"world");
+        assert!(res.is_ok());
+        assert_eq!(collector.stdout().unwrap(), "hello".to_string());
+        assert_eq!(collector.stderr().unwrap(), "world".to_string());
+    }
+
+    #[test]
+    fn test_output_collector_no_collection() {
+        let mut collector = OutputCollector::new(false);
+        let res = collector.collect(&[104, 101, 108, 108, 111], b"world");
+        assert!(res.is_ok());
+        assert_eq!(collector.stdout().unwrap(), "".to_string());
+        assert_eq!(collector.stderr().unwrap(), "".to_string());
+    }
 
     #[test]
     fn test_can_parse_simple_action() {

@@ -41,6 +41,7 @@ pub const VALUE_FORMATTER_TYPE: &str = "value_formatter";
 pub const TOOL_TYPE: &str = "tool";
 pub const VARIABLE_REF_TYPE: &str = "variable_ref";
 pub const SETTER_TYPE: &str = "setter";
+pub const ACTION_CTX_TYPE: &str = "action_ctx";
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.
