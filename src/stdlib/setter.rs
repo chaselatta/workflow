@@ -83,7 +83,7 @@ mod tests {
     use crate::stdlib::test_utils::assert_env;
 
     #[test]
-    fn test_can_parse_simple_node() {
+    fn test_can_parse_simple_setter() {
         assert_env().pass(
             r#"
 def _foo_impl(ctx):

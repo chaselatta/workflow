@@ -42,6 +42,9 @@ echo = builtin_tool(
 def _name_updater(ctx):
   return ctx.stdout + ctx.stderr + str(ctx.exit_code)
 
+def _next_impl(ctx):
+  return "bark"
+
 say_hi = action(
   tool = echo,
   args = [
@@ -70,6 +73,13 @@ say_bye = action(
   ]
 )
 
+simple_next = next(
+  implementation = _next_impl,
+  args = {
+    "x": "arg.string()"
+  }
+)
+
 main = workflow(
   entrypoint = "hi",
   graph = [
@@ -79,7 +89,13 @@ main = workflow(
         say_hi,
         bark,
         say_bye
-      ]
+      ],
+
+      next = simple_next()
+    ),
+    node(
+      name = "bark",
+      action = bark,
     )
   ]
 )

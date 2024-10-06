@@ -95,7 +95,7 @@ impl<'a> Action<'a> {
         resolver: &T,
         working_dir: &PathBuf,
         eval: &mut Evaluator<'a, '_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ActionCtx> {
         println!("RUNNING ACTION");
         let mut cmd = self.command(resolver, working_dir)?;
         let mut child = cmd
@@ -139,11 +139,12 @@ impl<'a> Action<'a> {
         let status = child.wait().expect("Waiting for child failed");
 
         let heap = eval.module().heap();
-        let ctx = heap.alloc(ActionCtx::new(
+        let action_ctx = ActionCtx::new(
             output_collector.stdout()?,
             output_collector.stderr()?,
             status,
-        ));
+        );
+        let ctx = heap.alloc(action_ctx.clone());
 
         for setter in self.setters.clone() {
             if let Some(setter) = Setter::from_value(setter) {
@@ -162,7 +163,7 @@ impl<'a> Action<'a> {
         }
 
         // run the command then call the variable updater function
-        Ok(())
+        Ok(action_ctx)
     }
 }
 
