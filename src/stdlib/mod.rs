@@ -2,6 +2,7 @@ pub mod action;
 pub mod errors;
 pub mod format;
 pub mod legacy;
+pub mod next;
 pub mod node;
 pub mod parse_delegate;
 pub mod parser;
@@ -13,6 +14,7 @@ pub mod workflow;
 
 pub use self::parse_delegate::{ParseDelegate, ParseDelegateHolder};
 pub use crate::stdlib::action::Action;
+pub use crate::stdlib::next::{Next, NextStub};
 pub use crate::stdlib::node::Node;
 use crate::stdlib::setter::Setter;
 use crate::stdlib::tool::Tool;
@@ -22,11 +24,13 @@ pub use crate::stdlib::workflow::Workflow;
 use action::action_impl;
 use format::format_impl;
 use format::ValueFormatter;
+use next::next_impl;
 use node::{node_impl, sequence_impl};
 use setter::setter_impl;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
+use starlark::values::dict::DictOf;
 use starlark::values::list::{ListOf, ListRef};
 use starlark::values::tuple::UnpackTuple;
 use starlark::values::Value;
@@ -42,6 +46,8 @@ pub const TOOL_TYPE: &str = "tool";
 pub const VARIABLE_REF_TYPE: &str = "variable_ref";
 pub const SETTER_TYPE: &str = "setter";
 pub const ACTION_CTX_TYPE: &str = "action_ctx";
+pub const NEXT_TYPE: &str = "next";
+pub const NEXT_STUB_TYPE: &str = "next_stub";
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.
@@ -121,16 +127,18 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
     fn node<'v>(
         #[starlark(require = named)] name: Option<&str>,
         #[starlark(require = named)] action: Value<'v>,
+        #[starlark(require = named)] next: Option<Value<'v>>,
     ) -> anyhow::Result<Node<'v>> {
-        node_impl(name.unwrap_or_default(), action)
+        node_impl(name.unwrap_or_default(), action, next)
     }
 
     /// The sequence definition
     fn sequence<'v>(
         #[starlark(require = named)] name: Option<&str>,
         #[starlark(require = named)] actions: ListOf<'v, Value<'v>>,
+        #[starlark(require = named)] next: Option<Value<'v>>,
     ) -> anyhow::Result<Node<'v>> {
-        sequence_impl(name.unwrap_or_default(), actions.to_vec())
+        sequence_impl(name.unwrap_or_default(), actions.to_vec(), next)
     }
 
     /// The setter definition
@@ -139,6 +147,17 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] variable: Value<'v>,
     ) -> anyhow::Result<Setter<'v>> {
         setter_impl(implementation, variable)
+    }
+
+    /// The next definition
+    fn next<'v>(
+        #[starlark(require = named)] implementation: Value<'v>,
+        #[starlark(require = named)] args: Option<DictOf<'v, String, Value<'v>>>,
+    ) -> anyhow::Result<NextStub<'v>> {
+        next_impl(
+            implementation, 
+            args.map(|v| v.to_dict()).unwrap_or_default(),
+        )
     }
 }
 

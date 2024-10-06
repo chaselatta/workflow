@@ -90,8 +90,15 @@ impl<'a> Workflow<'a> {
         working_dir: &PathBuf,
         eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<()> {
-        let node = self.first_node()?;
-        node.run(resolver, working_dir, eval)?;
+        let mut node: Option<&Node> = Some(self.first_node()?);
+        while let Some(inner_node) = node {
+            if let Some(res) = inner_node.run(resolver, working_dir, eval)? {
+                node = Some(self.node_with_name(&res)?);
+            } else {
+                node = None
+            }
+        }
+
         Ok(())
     }
 }
