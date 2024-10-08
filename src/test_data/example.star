@@ -43,7 +43,9 @@ def _name_updater(ctx):
   return ctx.stdout + ctx.stderr + str(ctx.exit_code)
 
 def _next_impl(ctx, args):
-  return args.x
+  if ctx.exit_code == args.y:
+    return args.x
+  return "end"
 
 say_hi = action(
   tool = echo,
@@ -66,6 +68,13 @@ bark = action(
   ]
 )
 
+end = action(
+  tool = echo,
+  args = [
+    "This is the end",
+  ]
+)
+
 say_bye = action(
   tool = echo,
   args = [
@@ -76,7 +85,8 @@ say_bye = action(
 simple_next = next(
   implementation = _next_impl,
   args = {
-    "x": args.string()
+    "x": args.string(),
+    "y": args.int(),
   }
 )
 
@@ -90,11 +100,15 @@ main = workflow(
         bark,
         say_bye
       ],
-      next = simple_next(x = "bark")
+      next = simple_next(x = "bark", y = 1)
     ),
     node(
       name = "bark",
       action = bark,
+    ),
+    node(
+      name = "end",
+      action = end,
     )
   ]
 )

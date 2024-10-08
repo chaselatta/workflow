@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 
-use super::arg_spec::StringArg;
+use super::arg_spec::{IntArg, StringArg};
 
 pub(crate) fn next_impl<'v>(
     implementation: Value<'v>,
@@ -72,6 +72,8 @@ where
             let arg_value = args_map.get(&key);
             let value = {
                 if let Some(spec) = StringArg::from_value(spec_value.clone()) {
+                    spec.struct_value(arg_value).expect("TODO")
+                } else if let Some(spec) = IntArg::from_value(spec_value.clone()) {
                     spec.struct_value(arg_value).expect("TODO")
                 } else {
                     panic!("FIX ME");

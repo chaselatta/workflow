@@ -50,6 +50,7 @@ pub const ACTION_CTX_TYPE: &str = "action_ctx";
 pub const NEXT_TYPE: &str = "next";
 pub const NEXT_STUB_TYPE: &str = "next_stub";
 pub const STRING_ARG_TYPE: &str = "string_arg";
+pub const INT_ARG_TYPE: &str = "int_arg";
 pub const STRUCT_VALUE_TYPE: &str = "struct_value";
 
 /// A macro to downcast the delegate to an Option<T> without having
