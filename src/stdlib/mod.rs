@@ -1,4 +1,5 @@
 pub mod action;
+pub mod arg_spec;
 pub mod errors;
 pub mod format;
 pub mod legacy;
@@ -48,6 +49,8 @@ pub const SETTER_TYPE: &str = "setter";
 pub const ACTION_CTX_TYPE: &str = "action_ctx";
 pub const NEXT_TYPE: &str = "next";
 pub const NEXT_STUB_TYPE: &str = "next_stub";
+pub const STRING_ARG_TYPE: &str = "string_arg";
+pub const STRUCT_VALUE_TYPE: &str = "struct_value";
 
 /// A macro to downcast the delegate to an Option<T> without having
 /// to deal with lifetimes.
@@ -155,7 +158,7 @@ pub fn starlark_stdlib(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] args: Option<DictOf<'v, String, Value<'v>>>,
     ) -> anyhow::Result<NextStub<'v>> {
         next_impl(
-            implementation, 
+            implementation,
             args.map(|v| v.to_dict()).unwrap_or_default(),
         )
     }
