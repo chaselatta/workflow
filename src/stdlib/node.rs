@@ -97,7 +97,6 @@ impl<'a> Node<'a> {
             let action = Action::from_value(value).unwrap();
             last_ctx = Some(action.run(resolver, working_dir, eval)?);
         }
-        println!("ABOUT TO CHECK NEXT");
 
         let heap = eval.module().heap();
         let ctx = match last_ctx {

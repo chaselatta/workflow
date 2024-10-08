@@ -96,7 +96,6 @@ impl<'a> Action<'a> {
         working_dir: &PathBuf,
         eval: &mut Evaluator<'a, '_>,
     ) -> anyhow::Result<ActionCtx> {
-        println!("RUNNING ACTION");
         let mut cmd = self.command(resolver, working_dir)?;
         let mut child = cmd
             .stdin(Stdio::piped())
