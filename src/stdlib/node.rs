@@ -109,7 +109,7 @@ impl<'a> Node<'a> {
         };
         let mut next_node: Option<String> = None;
         if let Some(next) = Next::from_value(self.next) {
-            match eval.eval_function(next.implementation(), &[ctx], &[]) {
+            match eval.eval_function(next.implementation(), &[ctx, next.args()], &[]) {
                 Ok(res) => {
                     if res.get_type() == "string" {
                         next_node = Some(res.to_str());
@@ -179,7 +179,7 @@ mod tests {
     fn test_can_parse_simple_sequence() {
         assert_env().pass(
             r#"sequence(
-  actions = 
+  actions =
     [
       action(tool = tool(path = '')),
       action(tool = tool(path = '')),
@@ -192,7 +192,7 @@ mod tests {
     fn test_sequence_fails_if_any_non_action() {
         assert_env().fail(
             r#"sequence(
-  actions = 
+  actions =
     [
       action(tool = tool(path = '')),
       1,

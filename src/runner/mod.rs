@@ -4,6 +4,7 @@ mod workflow_delegate;
 pub use self::variable_store::VariableStore;
 pub use self::workflow_delegate::WorkflowDelegate;
 
+use crate::stdlib::arg_spec::arg_spec;
 use crate::stdlib::{starlark_stdlib, ParseDelegate, ParseDelegateHolder};
 use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension};
 use starlark::eval::Evaluator;
@@ -25,12 +26,17 @@ impl Runner {
         workflow_file: PathBuf,
         delegate: T,
     ) -> anyhow::Result<Self> {
+        /*
+        TODO: Look at https://github.com/facebook/starlark-rust/blob/9efb6cab8bf609b500c9669eabd1bd7944feaa3d/starlark/src/stdlib/funcs/globals.rs#L33C1-L33C63
+        for a better way of doing this.
+        */
         let globals = GlobalsBuilder::extended_by(&[LibraryExtension::Json])
             .with(starlark_stdlib)
+            .with(arg_spec)
             .build();
 
         Ok(Runner {
-            globals: globals,
+            globals,
             delegate: ParseDelegateHolder::new(delegate),
             workflow_file: fs::canonicalize(workflow_file)?,
         })

@@ -16,5 +16,8 @@ Cargo.lock
 # VSCode files
 .vscode
 
+# zed files
+.zed
+
 # macos
 .DS_Store
